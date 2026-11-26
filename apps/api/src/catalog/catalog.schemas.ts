@@ -10,18 +10,31 @@ const imageSchema = z.object({
   alt: z.string().trim().min(1).max(160),
 });
 
+// Importante: los valores por defecto van solo en los esquemas de creación.
+// En una edición parcial, un default rellenaría campos que nadie envió
+// (por ejemplo pondría el stock a 0 al cambiar solo el precio).
+const notEmpty = (v: object) => Object.keys(v).length > 0;
+const nothingToUpdate = 'Nada que actualizar';
+
 // ---------- Categorías y marcas ----------
 
-export const createCategorySchema = z.object({
+const categoryFields = z.object({
   name,
+  slug: slugSchema,
+  parentId: z.uuid().nullable(),
+  sortOrder: z.number().int().min(0).max(10_000),
+  isActive: z.boolean(),
+});
+
+export const createCategorySchema = categoryFields.extend({
   slug: slugSchema.optional(),
   parentId: z.uuid().nullable().optional(),
-  sortOrder: z.number().int().min(0).max(10_000).default(0),
+  sortOrder: categoryFields.shape.sortOrder.default(0),
   isActive: z.boolean().default(true),
 });
-export const updateCategorySchema = createCategorySchema
+export const updateCategorySchema = categoryFields
   .partial()
-  .refine((v) => Object.keys(v).length > 0, 'Nada que actualizar');
+  .refine(notEmpty, nothingToUpdate);
 
 export const createBrandSchema = z.object({
   name,
@@ -30,7 +43,7 @@ export const createBrandSchema = z.object({
 
 // ---------- Productos ----------
 
-const variantBase = z.object({
+const variantFields = z.object({
   sku: z
     .string()
     .trim()
@@ -38,9 +51,9 @@ const variantBase = z.object({
     .regex(/^[A-Z0-9-]{2,40}$/, 'SKU inválido: letras, números y guiones'),
   name: z.string().trim().min(1).max(80),
   priceUsdCents: usdCentsSchema,
-  compareAtUsdCents: usdCentsSchema.nullable().optional(),
-  stock: z.number().int().min(0).max(1_000_000).default(0),
-  isActive: z.boolean().default(true),
+  compareAtUsdCents: usdCentsSchema.nullable(),
+  stock: z.number().int().min(0).max(1_000_000),
+  isActive: z.boolean(),
 });
 
 const offerIsHigher = (v: {
@@ -55,37 +68,45 @@ const offerMessage = {
   path: ['compareAtUsdCents'],
 };
 
-export const createVariantSchema = variantBase.refine(
-  offerIsHigher,
-  offerMessage,
-);
+export const createVariantSchema = variantFields
+  .extend({
+    compareAtUsdCents: usdCentsSchema.nullable().optional(),
+    stock: variantFields.shape.stock.default(0),
+    isActive: z.boolean().default(true),
+  })
+  .refine(offerIsHigher, offerMessage);
 
-export const updateVariantSchema = variantBase
+export const updateVariantSchema = variantFields
   .omit({ sku: true })
   .partial()
-  .refine((v) => Object.keys(v).length > 0, 'Nada que actualizar')
+  .refine(notEmpty, nothingToUpdate)
   .refine(offerIsHigher, offerMessage);
 
 const productFields = z.object({
   name,
-  slug: slugSchema.optional(),
+  slug: slugSchema,
   description: z.string().trim().min(1).max(5000),
   categoryId: z.uuid(),
-  brandId: z.uuid().nullable().optional(),
-  species: z.array(z.enum(Species)).max(7).default([]),
+  brandId: z.uuid().nullable(),
+  species: z.array(z.enum(Species)).max(7),
   // false para alimento e higiene: no se aceptan devoluciones una vez abiertos.
-  isReturnable: z.boolean().default(true),
-  isActive: z.boolean().default(true),
+  isReturnable: z.boolean(),
+  isActive: z.boolean(),
 });
 
 export const createProductSchema = productFields.extend({
+  slug: slugSchema.optional(),
+  brandId: z.uuid().nullable().optional(),
+  species: productFields.shape.species.default([]),
+  isReturnable: z.boolean().default(true),
+  isActive: z.boolean().default(true),
   variants: z.array(createVariantSchema).min(1).max(30),
   images: z.array(imageSchema).max(10).default([]),
 });
 
 export const updateProductSchema = productFields
   .partial()
-  .refine((v) => Object.keys(v).length > 0, 'Nada que actualizar');
+  .refine(notEmpty, nothingToUpdate);
 
 export const setImagesSchema = z.object({
   images: z.array(imageSchema).max(10),

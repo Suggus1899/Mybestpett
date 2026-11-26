@@ -18,10 +18,10 @@ const fields = z.object({
   name: z.string().trim().min(1).max(80),
   slug: slugSchema.optional(),
   listingType: z.enum(AnimalListingType),
-  status: z.enum(AnimalStatus).default('AVAILABLE'),
+  status: z.enum(AnimalStatus),
   species: z.enum(Species),
   breed: z.string().trim().max(80).nullable().optional(),
-  sex: z.enum(Sex).default('UNKNOWN'),
+  sex: z.enum(Sex),
   birthDate: z.iso
     .date()
     .transform((d) => new Date(`${d}T00:00:00Z`))
@@ -29,8 +29,8 @@ const fields = z.object({
     .optional(),
   description: z.string().trim().min(1).max(5000),
   priceUsdCents: usdCentsSchema.nullable().optional(),
-  isVaccinated: z.boolean().default(false),
-  isSterilized: z.boolean().default(false),
+  isVaccinated: z.boolean(),
+  isSterilized: z.boolean(),
 });
 
 // En venta exige precio; en adopción no se cobra precio de venta.
@@ -48,8 +48,16 @@ const priceMessage = {
   path: ['priceUsdCents'],
 };
 
+// Los valores por defecto solo al crear: en una edición parcial pisarían
+// campos que nadie envió.
 export const createAnimalSchema = fields
-  .extend({ images: z.array(imageSchema).max(10).default([]) })
+  .extend({
+    status: z.enum(AnimalStatus).default('AVAILABLE'),
+    sex: z.enum(Sex).default('UNKNOWN'),
+    isVaccinated: z.boolean().default(false),
+    isSterilized: z.boolean().default(false),
+    images: z.array(imageSchema).max(10).default([]),
+  })
   .refine(priceRule, priceMessage);
 
 // El tipo de publicación no cambia después de crearla.

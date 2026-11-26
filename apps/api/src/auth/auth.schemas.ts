@@ -1,9 +1,11 @@
 import { z } from 'zod';
 
+// Se limpia antes de validar: los teclados del móvil suelen añadir un espacio.
 const email = z
-  .email('Correo inválido')
-  .max(254)
-  .transform((value) => value.trim().toLowerCase());
+  .string()
+  .trim()
+  .toLowerCase()
+  .pipe(z.email('Correo inválido').max(254));
 
 // Máximo 128 para que nadie envíe contraseñas enormes y fuerce un hash costoso.
 const password = z
