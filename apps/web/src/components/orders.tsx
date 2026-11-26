@@ -39,6 +39,18 @@ export function OrderItems({ order }: { order: Order }) {
       <dl className="grid grid-cols-[1fr_auto] gap-y-1 border-t border-line pt-3">
         <dt>Subtotal</dt>
         <dd className="text-right">{formatUsd(order.subtotalUsdCents)}</dd>
+        {order.comboDiscountUsdCents > 0 && (
+          <>
+            <dt>Combos</dt>
+            <dd className="text-right">−{formatUsd(order.comboDiscountUsdCents)}</dd>
+          </>
+        )}
+        {order.couponDiscountUsdCents > 0 && (
+          <>
+            <dt>Cupón {order.couponCode}</dt>
+            <dd className="text-right">−{formatUsd(order.couponDiscountUsdCents)}</dd>
+          </>
+        )}
         <dt>Envío ({order.shippingZoneName})</dt>
         <dd className="text-right">{order.shippingUsdCents === 0 ? 'Gratis' : formatUsd(order.shippingUsdCents)}</dd>
         <dt className="font-extrabold">Total</dt>

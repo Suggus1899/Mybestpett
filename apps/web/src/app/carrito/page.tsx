@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
-import { Suspense } from 'react';
+import { Fragment, Suspense } from 'react';
 import { Picture } from '@/components/catalog';
 import { CartQuantityForm } from '@/components/shop-forms';
 import { Button, ButtonLink } from '@/components/ui';
@@ -93,18 +93,34 @@ async function CartView() {
         <dl className="grid grid-cols-[1fr_auto] gap-y-1">
           <dt>Subtotal ({cart.itemCount} {cart.itemCount === 1 ? 'producto' : 'productos'})</dt>
           <dd className="text-right font-extrabold">{formatUsd(cart.subtotalUsdCents)}</dd>
+          {cart.combos.map((c) => (
+            <Fragment key={c.comboId}>
+              <dt className="text-petbf">
+                Combo {c.name}
+                {c.count > 1 && ` × ${c.count}`}
+              </dt>
+              <dd className="text-right font-bold text-petbf">−{formatUsd(c.savingsUsdCents)}</dd>
+            </Fragment>
+          ))}
+          {cart.comboDiscountUsdCents > 0 && (
+            <>
+              <dt className="font-extrabold">Total de productos</dt>
+              <dd className="text-right font-extrabold">{formatUsd(cart.itemsTotalUsdCents)}</dd>
+            </>
+          )}
           {rate && (
             <>
               <dt className="text-sm text-slate">En bolívares</dt>
-              <dd className="text-right text-sm text-slate">{formatBs(cart.subtotalUsdCents, rate)}</dd>
+              <dd className="text-right text-sm text-slate">{formatBs(cart.itemsTotalUsdCents, rate)}</dd>
             </>
           )}
         </dl>
         <p className="text-sm text-slate">
-          {cart.subtotalUsdCents >= 2500
+          {cart.itemsTotalUsdCents >= 2500
             ? 'Tu envío es gratis.'
-            : `Te faltan ${formatUsd(2500 - cart.subtotalUsdCents)} para el envío gratis.`}
+            : `Te faltan ${formatUsd(2500 - cart.itemsTotalUsdCents)} para el envío gratis.`}
         </p>
+        <p className="text-sm text-slate">¿Tienes un cupón? Lo aplicas al finalizar la compra.</p>
         {cart.canCheckout ? (
           <ButtonLink href="/checkout">Continuar con la compra</ButtonLink>
         ) : (

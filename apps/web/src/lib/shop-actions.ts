@@ -81,6 +81,16 @@ export async function addToCartAction(_prev: ActionState, formData: FormData): P
   return { ok: 'Añadido al carrito' };
 }
 
+export async function addComboToCartAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const slug = text(formData, 'slug');
+  const result = await call('POST', `/cart/combos/${encodeURIComponent(slug)}`, {
+    quantity: Number(text(formData, 'quantity') || '1'),
+  }, '/combos');
+  if (!result.ok) return { error: result.error };
+  revalidatePath('/', 'layout');
+  return { ok: 'Combo añadido al carrito' };
+}
+
 export async function setCartQuantityAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const variantId = text(formData, 'variantId');
   const result = await call('PUT', `/cart/items/${encodeURIComponent(variantId)}`, {
@@ -115,6 +125,7 @@ export async function checkoutAction(_prev: ActionState, formData: FormData): Pr
     shippingZoneId: text(formData, 'shippingZoneId'),
     paymentMethodId: text(formData, 'paymentMethodId'),
     acceptTerms: formData.get('acceptTerms') === 'on',
+    couponCode: text(formData, 'couponCode') || undefined,
   }, '/checkout');
   if (!result.ok) return { error: result.error };
   revalidatePath('/', 'layout');
@@ -382,4 +393,87 @@ export async function moderateReviewAction(_prev: ActionState, formData: FormDat
   if (!result.ok) return { error: result.error, fields: { reason } };
   revalidatePath('/admin/resenas');
   return { ok: status === 'HIDDEN' ? 'Reseña oculta' : 'Reseña visible' };
+}
+
+// ---------- Panel: cupones y combos ----------
+
+// Monto opcional en dólares: vacío → null.
+function optionalCents(value: string) {
+  return value === '' ? null : dollarsToCents(value);
+}
+
+export async function createCouponAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const keys = ['code', 'description', 'type', 'value', 'minSubtotal', 'maxDiscount', 'startsAt', 'endsAt', 'maxRedemptions', 'perUserLimit'];
+  const fields = Object.fromEntries(keys.map((k) => [k, text(formData, k)]));
+  const type = fields.type;
+  const value = type === 'FIXED' ? dollarsToCents(fields.value) : Number(fields.value);
+  const minSubtotal = optionalCents(fields.minSubtotal);
+  const maxDiscount = type === 'PERCENT' ? optionalCents(fields.maxDiscount) : null;
+  if ([value, minSubtotal, maxDiscount].some((n) => Number.isNaN(n))) {
+    return { error: 'Usa montos en dólares con hasta 2 decimales, por ejemplo 3,50', fields };
+  }
+  const result = await call('POST', '/manage/coupons', {
+    code: fields.code,
+    description: fields.description,
+    type,
+    value,
+    minSubtotalUsdCents: minSubtotal ?? 0,
+    maxDiscountUsdCents: maxDiscount,
+    startsAt: fields.startsAt ? caracasIso(fields.startsAt) : null,
+    endsAt: fields.endsAt ? caracasIso(fields.endsAt) : null,
+    maxRedemptions: fields.maxRedemptions ? Number(fields.maxRedemptions) : null,
+    perUserLimit: Number(fields.perUserLimit || '1'),
+  }, '/admin/promociones');
+  if (!result.ok) return { error: result.error, fields };
+  revalidatePath('/admin/promociones');
+  return { ok: `Cupón ${fields.code.toUpperCase()} creado` };
+}
+
+export async function toggleCouponAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const id = text(formData, 'id');
+  const isActive = text(formData, 'isActive') === 'true';
+  const result = await call('PATCH', `/manage/coupons/${encodeURIComponent(id)}`, { isActive }, '/admin/promociones');
+  if (!result.ok) return { error: result.error };
+  revalidatePath('/admin/promociones');
+  return { ok: isActive ? 'Cupón activado' : 'Cupón desactivado' };
+}
+
+const COMBO_LINES = 5; // filas del formulario de combo (promotion-forms.tsx)
+
+export async function createComboAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const keys = ['name', 'description', 'price'];
+  for (let i = 0; i < COMBO_LINES; i++) keys.push(`sku${i}`, `qty${i}`);
+  const fields = Object.fromEntries(keys.map((k) => [k, text(formData, k)]));
+  const price = dollarsToCents(fields.price);
+  if (Number.isNaN(price)) {
+    return { error: 'Usa montos en dólares con hasta 2 decimales, por ejemplo 3,50', fields };
+  }
+  const items = [];
+  for (let i = 0; i < COMBO_LINES; i++) {
+    if (fields[`sku${i}`]) items.push({ sku: fields[`sku${i}`], quantity: Number(fields[`qty${i}`] || '1') });
+  }
+  const result = await call('POST', '/manage/combos', {
+    name: fields.name,
+    description: fields.description,
+    priceUsdCents: price,
+    items,
+  }, '/admin/promociones?ver=combos');
+  if (!result.ok) return { error: result.error, fields };
+  revalidatePath('/admin/promociones');
+  revalidatePath('/combos');
+  return { ok: `Combo ${fields.name} creado` };
+}
+
+export async function updateComboAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const id = text(formData, 'id');
+  const price = dollarsToCents(text(formData, 'price'));
+  if (Number.isNaN(price)) return { error: 'Usa montos en dólares con hasta 2 decimales, por ejemplo 3,50' };
+  const result = await call('PATCH', `/manage/combos/${encodeURIComponent(id)}`, {
+    priceUsdCents: price,
+    isActive: formData.get('isActive') === 'on',
+  }, '/admin/promociones?ver=combos');
+  if (!result.ok) return { error: result.error };
+  revalidatePath('/admin/promociones');
+  revalidatePath('/combos');
+  return { ok: 'Combo guardado' };
 }

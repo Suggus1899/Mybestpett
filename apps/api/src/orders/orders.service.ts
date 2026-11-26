@@ -16,6 +16,7 @@ import { paged, paginate } from '../common/pagination.js';
 import type { OrderStatus } from '../generated/prisma/enums.js';
 import { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { PromotionsService } from '../promotions/promotions.service.js';
 import { RatesService } from '../rates/rates.service.js';
 import type {
   AdvanceOrderDto,
@@ -141,6 +142,7 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
     private readonly addresses: AddressesService,
     private readonly rates: RatesService,
     private readonly emails: EmailService,
+    private readonly promotions: PromotionsService,
   ) {}
 
   // Cada minuto cancela los pedidos sin pago reportado tras 2 horas.
@@ -195,12 +197,21 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
       if (!method)
         throw new BadRequestException('Método de pago no disponible');
 
-      const subtotal = rows.reduce(
-        (n, r) => n + r.variant.priceUsdCents * r.quantity,
-        0,
+      const quote = await this.promotions.quote(
+        tx,
+        user.id,
+        rows.map((r) => ({
+          variantId: r.variantId,
+          quantity: r.quantity,
+          unitPriceUsdCents: r.variant.priceUsdCents,
+        })),
+        dto.couponCode,
+        { lock: true },
       );
-      const shipping = shippingCost(subtotal, zone);
-      const total = subtotal + shipping;
+      const subtotal = quote.subtotalUsdCents;
+      // El envío gratis se mide con lo que se paga por los productos.
+      const shipping = shippingCost(quote.itemsTotalUsdCents, zone);
+      const total = quote.itemsTotalUsdCents + shipping;
       let totalCharged: Prisma.Decimal;
       try {
         totalCharged = chargedAmount(total, method.currency, rates);
@@ -240,6 +251,10 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
           eurVesRate: rates.eurVes,
           rateEffectiveAt: rates.effectiveAt,
           subtotalUsdCents: subtotal,
+          comboDiscountUsdCents: quote.comboDiscountUsdCents,
+          couponDiscountUsdCents: quote.couponDiscountUsdCents,
+          couponId: quote.coupon?.id ?? null,
+          couponCode: quote.coupon?.code ?? null,
           shippingUsdCents: shipping,
           totalUsdCents: total,
           totalCharged,
@@ -288,7 +303,11 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
           action: 'order.created',
           entityType: 'order',
           entityId: created.id,
-          metadata: { number: created.number, totalUsdCents: total },
+          metadata: {
+            number: created.number,
+            totalUsdCents: total,
+            couponCode: quote.coupon?.code ?? null,
+          },
         },
         tx,
       );

@@ -61,7 +61,7 @@ export async function open(page: Page, path: string) {
 }
 
 // Producto propio de cada prueba de compra, para no gastar el stock del seed
-// que usan las pruebas del inventario. Devuelve su nombre y su slug.
+// que usan las pruebas del inventario. Devuelve su nombre, su slug y su SKU.
 // Stock por defecto 10: menos que el seed, para no alterar sus órdenes.
 const created: string[] = [];
 export async function createProduct(priceUsdCents: number, stock = 10) {
@@ -70,18 +70,19 @@ export async function createProduct(priceUsdCents: number, stock = 10) {
     r.json(),
   );
   const perros = categories.find((c) => c.slug === 'perros')!;
+  const sku = `E2E-${id}`.toUpperCase().slice(0, 40);
   const product = await post(
     '/manage/products',
     {
       name: `Pelota E2E ${id}`,
       description: 'Producto de prueba',
       categoryId: perros.id,
-      variants: [{ sku: `E2E-${id}`.toUpperCase().slice(0, 40), name: 'Unidad', priceUsdCents, stock }],
+      variants: [{ sku, name: 'Unidad', priceUsdCents, stock }],
     },
     await admin(),
   );
   created.push(product.id);
-  return { name: product.name as string, slug: product.slug as string };
+  return { name: product.name as string, slug: product.slug as string, sku };
 }
 
 // Al terminar, se retiran de la tienda y del inventario para no ensuciar el

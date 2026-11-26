@@ -177,7 +177,55 @@ export interface Cart {
   }[];
   itemCount: number;
   subtotalUsdCents: number;
+  combos: { comboId: string; name: string; count: number; savingsUsdCents: number }[];
+  comboDiscountUsdCents: number;
+  coupon: { code: string; description: string; discountUsdCents: number } | null;
+  // Lo que cuestan los productos tras combos y cupón, sin envío.
+  itemsTotalUsdCents: number;
   canCheckout: boolean;
+}
+
+export interface Combo {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  priceUsdCents: number;
+  regularUsdCents: number;
+  savingsUsdCents: number;
+  available: number;
+  items: {
+    quantity: number;
+    variantId: string;
+    variantName: string;
+    sku: string;
+    unitPriceUsdCents: number;
+    product: { name: string; slug: string; image: Image | null };
+  }[];
+}
+
+export interface ComboRow extends Combo {
+  isActive: boolean;
+  sellable: boolean;
+}
+
+export interface Coupon {
+  id: string;
+  code: string;
+  description: string;
+  type: 'PERCENT' | 'FIXED';
+  value: number;
+  minSubtotalUsdCents: number;
+  maxDiscountUsdCents: number | null;
+  startsAt: string | null;
+  endsAt: string | null;
+  maxRedemptions: number | null;
+  perUserLimit: number;
+  isActive: boolean;
+  createdAt: string;
+  createdBy: { firstName: string; lastName: string };
+  uses: number;
+  discountedUsdCents: number;
 }
 
 export interface Address {
@@ -249,6 +297,9 @@ export interface Order {
   eurVesRate: string | null;
   rateEffectiveAt: string | null;
   subtotalUsdCents: number;
+  comboDiscountUsdCents: number;
+  couponDiscountUsdCents: number;
+  couponCode: string | null;
   shippingUsdCents: number;
   totalUsdCents: number;
   totalCharged: string;
@@ -415,6 +466,21 @@ export const api = {
   managePaymentMethods: () => get<PaymentMethod[]>('/manage/payment-methods', true),
   // Compra: con la sesión del cliente.
   cart: () => get<Cart>('/cart', true),
+  // Carrito con un cupón de prueba: si no aplica, devuelve el motivo.
+  cartWithCoupon: async (code: string): Promise<{ cart: Cart } | { error: string }> => {
+    const headers: Record<string, string> = forwardHeaders(await requestHeaders());
+    const token = (await cookies()).get(ACCESS_COOKIE)?.value;
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const res = await fetch(`${API_URL}/cart${qs({ coupon: code })}`, { headers, cache: 'no-store' });
+    if (res.ok) return { cart: await res.json() };
+    if (res.status !== 400) throw new ApiError(res.status);
+    const body = await res.json().catch(() => ({}));
+    const msg = Array.isArray(body.message) ? body.message[0] : body.message;
+    return { error: typeof msg === 'string' ? msg.replace(/^[a-zA-Z.]+: /, '') : 'Ese cupón no aplica' };
+  },
+  combos: () => get<Combo[]>('/combos'),
+  manageCombos: (params: Params) => get<Page<ComboRow>>(`/manage/combos${qs(params)}`, true),
+  manageCoupons: (params: Params) => get<Page<Coupon>>(`/manage/coupons${qs(params)}`, true),
   addresses: () => get<Address[]>('/addresses', true),
   shippingZones: () => get<ShippingZone[]>('/shipping-zones'),
   paymentMethods: () => get<PaymentMethod[]>('/payment-methods'),

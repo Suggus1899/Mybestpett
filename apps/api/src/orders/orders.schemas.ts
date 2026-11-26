@@ -1,3 +1,4 @@
+import { couponCodeSchema } from '../promotions/promotions.schemas.js';
 import { z } from 'zod';
 import { paginationShape } from '../common/pagination.js';
 import {
@@ -13,6 +14,7 @@ export const checkoutSchema = z.object({
   shippingZoneId: id,
   paymentMethodId: id,
   acceptTerms: z.literal(true, 'Debes aceptar los términos y condiciones'),
+  couponCode: couponCodeSchema.optional(),
 });
 
 // Referencia bancaria normalizada: sin espacios y en mayúsculas, para

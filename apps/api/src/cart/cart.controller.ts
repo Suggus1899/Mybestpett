@@ -6,6 +6,7 @@ import {
   Param,
   Post,
   Put,
+  Query,
 } from '@nestjs/common';
 import { z } from 'zod';
 import type { AuthUser } from '../auth/auth.types.js';
@@ -16,6 +17,13 @@ import {
   type AddItemDto,
   type SetQuantityDto,
 } from './cart.schemas.js';
+import { slugSchema } from '../common/slug.js';
+import {
+  addComboSchema,
+  quoteSchema,
+  type AddComboDto,
+  type QuoteQuery,
+} from '../promotions/promotions.schemas.js';
 import { CartService } from './cart.service.js';
 
 const id = z.uuid('Id inválido');
@@ -25,9 +33,22 @@ const id = z.uuid('Id inválido');
 export class CartController {
   constructor(private readonly cart: CartService) {}
 
+  // ?coupon=CODIGO prueba un cupón: 400 con el motivo si no aplica.
   @Get()
-  get(@CurrentUser() user: AuthUser) {
-    return this.cart.get(user.id);
+  get(
+    @CurrentUser() user: AuthUser,
+    @Query({ schema: quoteSchema }) query: QuoteQuery,
+  ) {
+    return this.cart.get(user.id, query.coupon);
+  }
+
+  @Post('combos/:slug')
+  addCombo(
+    @CurrentUser() user: AuthUser,
+    @Param('slug', { schema: slugSchema }) slug: string,
+    @Body({ schema: addComboSchema }) dto: AddComboDto,
+  ) {
+    return this.cart.addCombo(user.id, slug, dto.quantity);
   }
 
   @Post('items')

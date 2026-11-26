@@ -60,6 +60,7 @@ model User {
   returnsRefunded  ReturnRequest[]      @relation("ReturnRefunder")
   reviews          ProductReview[]      @relation("ReviewAuthor")
   reviewsModerated ProductReview[]      @relation("ReviewModerator")
+  couponsCreated   Coupon[]
 
   @@map("users")
 }
@@ -198,6 +199,7 @@ model ProductVariant {
   cartItems  CartItem[]
   orderItems OrderItem[]
   movements  InventoryMovement[]
+  comboItems ComboItem[]
 
   @@index([productId])
   @@map("product_variants")
@@ -425,38 +427,43 @@ enum OrderStatus {
 
 // Precios, tasas y dirección se copian al pedido: un cambio posterior no altera el pasado.
 model Order {
-  id               String      @id @default(uuid()) @db.Uuid
-  number           Int         @unique @default(autoincrement()) // se muestra como PB-000123
-  userId           String      @db.Uuid
-  status           OrderStatus @default(PENDING_PAYMENT)
-  paymentMethodId  String      @db.Uuid
-  chargedCurrency  Currency
+  id                     String      @id @default(uuid()) @db.Uuid
+  number                 Int         @unique @default(autoincrement()) // se muestra como PB-000123
+  userId                 String      @db.Uuid
+  status                 OrderStatus @default(PENDING_PAYMENT)
+  paymentMethodId        String      @db.Uuid
+  chargedCurrency        Currency
   // Tasas BCV congeladas al crear el pedido (Bs por 1 USD y por 1 EUR).
-  usdVesRate       Decimal?    @db.Decimal(20, 8)
-  eurVesRate       Decimal?    @db.Decimal(20, 8)
-  rateEffectiveAt  DateTime?
-  subtotalUsdCents Int
-  shippingUsdCents Int
-  totalUsdCents    Int
-  totalCharged     Decimal     @db.Decimal(20, 8) // monto exacto a pagar en chargedCurrency
-  recipientName    String
-  phone            String
-  state            String
-  city             String
-  municipality     String?
-  line1            String
-  referencePoint   String?
-  shippingZoneName String
-  carrier          String
-  trackingCode     String?
-  paymentDueAt     DateTime
-  termsAcceptedAt  DateTime
-  paidAt           DateTime?
-  shippedAt        DateTime?
-  deliveredAt      DateTime?
-  cancelledAt      DateTime?
-  createdAt        DateTime    @default(now())
-  updatedAt        DateTime    @updatedAt
+  usdVesRate             Decimal?    @db.Decimal(20, 8)
+  eurVesRate             Decimal?    @db.Decimal(20, 8)
+  rateEffectiveAt        DateTime?
+  subtotalUsdCents       Int // precio de lista de los productos, sin descuentos
+  // Descuentos sobre los productos: combos completos y un cupón (no se acumulan cupones).
+  comboDiscountUsdCents  Int         @default(0)
+  couponDiscountUsdCents Int         @default(0)
+  couponId               String?     @db.Uuid
+  couponCode             String?
+  shippingUsdCents       Int
+  totalUsdCents          Int // subtotal − descuentos + envío
+  totalCharged           Decimal     @db.Decimal(20, 8) // monto exacto a pagar en chargedCurrency
+  recipientName          String
+  phone                  String
+  state                  String
+  city                   String
+  municipality           String?
+  line1                  String
+  referencePoint         String?
+  shippingZoneName       String
+  carrier                String
+  trackingCode           String?
+  paymentDueAt           DateTime
+  termsAcceptedAt        DateTime
+  paidAt                 DateTime?
+  shippedAt              DateTime?
+  deliveredAt            DateTime?
+  cancelledAt            DateTime?
+  createdAt              DateTime    @default(now())
+  updatedAt              DateTime    @updatedAt
 
   user          User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
   paymentMethod PaymentMethod        @relation(fields: [paymentMethodId], references: [id], onDelete: Restrict)
@@ -465,8 +472,10 @@ model Order {
   payments      Payment[]
   movements     InventoryMovement[]
   returns       ReturnRequest[]
+  coupon        Coupon?              @relation(fields: [couponId], references: [id], onDelete: Restrict)
 
   @@index([userId, createdAt])
+  @@index([couponId])
   @@index([status, paymentDueAt])
   @@map("orders")
 }
@@ -668,4 +677,64 @@ model ProductReview {
   @@index([productId, status, createdAt])
   @@index([status, createdAt])
   @@map("product_reviews")
+}
+
+enum CouponType {
+  PERCENT // value = porcentaje (1 a 90)
+  FIXED // value = centavos de dólar
+}
+
+// Cupón de descuento sobre los productos (no sobre el envío). Uno por pedido.
+// Los usos se cuentan con los pedidos no cancelados que lo llevan.
+model Coupon {
+  id                  String     @id @default(uuid()) @db.Uuid
+  code                String     @unique // siempre en mayúsculas
+  description         String
+  type                CouponType
+  value               Int
+  minSubtotalUsdCents Int        @default(0)
+  maxDiscountUsdCents Int? // tope para los porcentuales
+  startsAt            DateTime?
+  endsAt              DateTime?
+  maxRedemptions      Int? // usos totales; null = sin límite
+  perUserLimit        Int        @default(1)
+  isActive            Boolean    @default(true)
+  createdById         String     @db.Uuid
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+
+  createdBy User    @relation(fields: [createdById], references: [id], onDelete: Restrict)
+  orders    Order[]
+
+  @@map("coupons")
+}
+
+// Combo: varias presentaciones juntas a un precio menor que la suma. El
+// descuento se aplica solo en el carrito por cada combo completo.
+model Combo {
+  id            String   @id @default(uuid()) @db.Uuid
+  name          String
+  slug          String   @unique
+  description   String
+  priceUsdCents Int
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  items ComboItem[]
+
+  @@map("combos")
+}
+
+model ComboItem {
+  id        String @id @default(uuid()) @db.Uuid
+  comboId   String @db.Uuid
+  variantId String @db.Uuid
+  quantity  Int
+
+  combo   Combo          @relation(fields: [comboId], references: [id], onDelete: Cascade)
+  variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+
+  @@unique([comboId, variantId])
+  @@map("combo_items")
 }
