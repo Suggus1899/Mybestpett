@@ -1,0 +1,512 @@
+import '../core/money.dart';
+import 'catalog.dart';
+import 'json.dart';
+
+class User {
+  const User({
+    required this.id,
+    required this.email,
+    required this.firstName,
+    required this.lastName,
+    required this.phone,
+    required this.roles,
+  });
+  factory User.fromJson(Json json) => User(
+    id: json.str('id'),
+    email: json.str('email'),
+    firstName: json.str('firstName'),
+    lastName: json.str('lastName'),
+    phone: json.strOrNull('phone'),
+    roles: json.strings('roles'),
+  );
+  final String id;
+  final String email;
+  final String firstName;
+  final String lastName;
+  final String? phone;
+  final List<String> roles;
+
+  String get fullName => '$firstName $lastName';
+}
+
+/// Por qué una línea del carrito no se puede comprar tal como está.
+enum CartIssue { unavailable, insufficientStock }
+
+class CartItem {
+  const CartItem({
+    required this.variantId,
+    required this.variantName,
+    required this.productName,
+    required this.productSlug,
+    required this.image,
+    required this.unitPriceUsdCents,
+    required this.quantity,
+    required this.lineTotalUsdCents,
+    required this.issue,
+    required this.available,
+  });
+
+  factory CartItem.fromJson(Json json) {
+    final product = json.obj('product');
+    return CartItem(
+      variantId: json.str('variantId'),
+      variantName: json.str('name'),
+      productName: product.str('name'),
+      productSlug: product.str('slug'),
+      image: product.objOrNull('image') == null
+          ? null
+          : ImageRef.fromJson(product.obj('image')),
+      unitPriceUsdCents: json.integer('unitPriceUsdCents'),
+      quantity: json.integer('quantity'),
+      lineTotalUsdCents: json.integer('lineTotalUsdCents'),
+      issue: switch (json.strOrNull('issue')) {
+        null => null,
+        'unavailable' => CartIssue.unavailable,
+        'insufficient_stock' => CartIssue.insufficientStock,
+        final other => throw FormatException('Problema desconocido: $other'),
+      },
+      available: json.integer('available'),
+    );
+  }
+
+  final String variantId;
+  final String variantName;
+  final String productName;
+  final String productSlug;
+  final ImageRef? image;
+  final int unitPriceUsdCents;
+  final int quantity;
+  final int lineTotalUsdCents;
+  final CartIssue? issue;
+
+  /// Lo máximo que se puede pedir de esta presentación ahora mismo.
+  final int available;
+}
+
+class Cart {
+  const Cart({
+    required this.items,
+    required this.itemCount,
+    required this.subtotalUsdCents,
+    required this.canCheckout,
+  });
+  factory Cart.fromJson(Json json) => Cart(
+    items: asList(json['items'], CartItem.fromJson),
+    itemCount: json.integer('itemCount'),
+    subtotalUsdCents: json.integer('subtotalUsdCents'),
+    canCheckout: json.boolean('canCheckout'),
+  );
+  static const empty = Cart(
+    items: [],
+    itemCount: 0,
+    subtotalUsdCents: 0,
+    canCheckout: false,
+  );
+  final List<CartItem> items;
+  final int itemCount;
+  final int subtotalUsdCents;
+  final bool canCheckout;
+}
+
+class Address {
+  const Address({
+    required this.id,
+    required this.recipientName,
+    required this.phone,
+    required this.state,
+    required this.city,
+    required this.municipality,
+    required this.line1,
+    required this.referencePoint,
+    required this.isDefault,
+  });
+  factory Address.fromJson(Json json) => Address(
+    id: json.str('id'),
+    recipientName: json.str('recipientName'),
+    phone: json.str('phone'),
+    state: json.str('state'),
+    city: json.str('city'),
+    municipality: json.strOrNull('municipality'),
+    line1: json.str('line1'),
+    referencePoint: json.strOrNull('referencePoint'),
+    isDefault: json.boolean('isDefault'),
+  );
+  final String id;
+  final String recipientName;
+  final String phone;
+  final String state;
+  final String city;
+  final String? municipality;
+  final String line1;
+  final String? referencePoint;
+  final bool isDefault;
+
+  String get summary => [line1, ?municipality, city, state].join(', ');
+}
+
+/// Datos de una dirección para crearla o editarla.
+class AddressInput {
+  const AddressInput({
+    required this.recipientName,
+    required this.phone,
+    required this.state,
+    required this.city,
+    required this.municipality,
+    required this.line1,
+    required this.referencePoint,
+    required this.isDefault,
+  });
+  final String recipientName;
+  final String phone;
+  final String state;
+  final String city;
+  final String municipality;
+  final String line1;
+  final String referencePoint;
+  final bool isDefault;
+
+  // Los opcionales vacíos van como cadena vacía: la API los guarda como null.
+  Json toJson() => {
+    'recipientName': recipientName.trim(),
+    'phone': phone.trim(),
+    'state': state,
+    'city': city.trim(),
+    'municipality': municipality.trim(),
+    'line1': line1.trim(),
+    'referencePoint': referencePoint.trim(),
+    'isDefault': isDefault,
+  };
+}
+
+class ShippingZone {
+  const ShippingZone({
+    required this.id,
+    required this.name,
+    required this.states,
+    required this.carrier,
+    required this.priceUsdCents,
+    required this.freeOverUsdCents,
+  });
+  factory ShippingZone.fromJson(Json json) => ShippingZone(
+    id: json.str('id'),
+    name: json.str('name'),
+    states: json.strings('states'),
+    carrier: json.str('carrier'),
+    priceUsdCents: json.integer('priceUsdCents'),
+    freeOverUsdCents: json.intOrNull('freeOverUsdCents'),
+  );
+  final String id;
+  final String name;
+  final List<String> states;
+  final String carrier;
+  final int priceUsdCents;
+  final int? freeOverUsdCents;
+
+  int costFor(int subtotalUsdCents) => shippingCostCents(
+    subtotalUsdCents,
+    priceUsdCents: priceUsdCents,
+    freeOverUsdCents: freeOverUsdCents,
+  );
+}
+
+class PaymentMethod {
+  const PaymentMethod({
+    required this.id,
+    required this.code,
+    required this.name,
+    required this.currency,
+    required this.instructions,
+  });
+  factory PaymentMethod.fromJson(Json json) => PaymentMethod(
+    id: json.str('id'),
+    code: json.str('code'),
+    name: json.str('name'),
+    currency: currencyFromApi(json.str('currency')),
+    instructions: json.str('instructions'),
+  );
+  final String id;
+  final String code;
+  final String name;
+  final Currency currency;
+  final String instructions;
+}
+
+enum OrderStatus {
+  pendingPayment,
+  paymentReported,
+  paid,
+  preparing,
+  shipped,
+  delivered,
+  cancelled,
+  refunded,
+}
+
+OrderStatus orderStatusFromApi(String value) => switch (value) {
+  'PENDING_PAYMENT' => OrderStatus.pendingPayment,
+  'PAYMENT_REPORTED' => OrderStatus.paymentReported,
+  'PAID' => OrderStatus.paid,
+  'PREPARING' => OrderStatus.preparing,
+  'SHIPPED' => OrderStatus.shipped,
+  'DELIVERED' => OrderStatus.delivered,
+  'CANCELLED' => OrderStatus.cancelled,
+  'REFUNDED' => OrderStatus.refunded,
+  _ => throw FormatException('Estado de pedido desconocido: $value'),
+};
+
+extension OrderStatusLabel on OrderStatus {
+  /// Mismos textos que la web.
+  String get label => switch (this) {
+    OrderStatus.pendingPayment => 'Esperando el pago',
+    OrderStatus.paymentReported => 'Pago en revisión',
+    OrderStatus.paid => 'Pagado',
+    OrderStatus.preparing => 'En preparación',
+    OrderStatus.shipped => 'Enviado',
+    OrderStatus.delivered => 'Entregado',
+    OrderStatus.cancelled => 'Cancelado',
+    OrderStatus.refunded => 'Reembolsado',
+  };
+}
+
+enum PaymentStatus { reported, verified, rejected }
+
+extension PaymentStatusLabel on PaymentStatus {
+  String get label => switch (this) {
+    PaymentStatus.reported => 'En revisión',
+    PaymentStatus.verified => 'Verificado',
+    PaymentStatus.rejected => 'Rechazado',
+  };
+}
+
+class OrderSummary {
+  const OrderSummary({
+    required this.id,
+    required this.code,
+    required this.status,
+    required this.totalUsdCents,
+    required this.totalCharged,
+    required this.chargedCurrency,
+    required this.paymentDueAt,
+    required this.createdAt,
+    required this.itemCount,
+  });
+  factory OrderSummary.fromJson(Json json) => OrderSummary(
+    id: json.str('id'),
+    code: json.str('code'),
+    status: orderStatusFromApi(json.str('status')),
+    totalUsdCents: json.integer('totalUsdCents'),
+    totalCharged: json.decimal('totalCharged'),
+    chargedCurrency: currencyFromApi(json.str('chargedCurrency')),
+    paymentDueAt: json.date('paymentDueAt'),
+    createdAt: json.date('createdAt'),
+    itemCount: json.obj('_count').integer('items'),
+  );
+  final String id;
+  final String code;
+  final OrderStatus status;
+  final int totalUsdCents;
+  final String totalCharged;
+  final Currency chargedCurrency;
+  final DateTime paymentDueAt;
+  final DateTime createdAt;
+  final int itemCount;
+}
+
+class OrderItem {
+  const OrderItem({
+    required this.id,
+    required this.productName,
+    required this.productSlug,
+    required this.variantName,
+    required this.unitPriceUsdCents,
+    required this.quantity,
+    required this.isReturnable,
+  });
+  factory OrderItem.fromJson(Json json) => OrderItem(
+    id: json.str('id'),
+    productName: json.str('productName'),
+    productSlug: json.str('productSlug'),
+    variantName: json.str('variantName'),
+    unitPriceUsdCents: json.integer('unitPriceUsdCents'),
+    quantity: json.integer('quantity'),
+    isReturnable: json.boolean('isReturnable'),
+  );
+  final String id;
+  final String productName;
+  final String productSlug;
+  final String variantName;
+  final int unitPriceUsdCents;
+  final int quantity;
+  final bool isReturnable;
+}
+
+class PaymentReport {
+  const PaymentReport({
+    required this.id,
+    required this.reference,
+    required this.amount,
+    required this.currency,
+    required this.paidAt,
+    required this.status,
+    required this.rejectionReason,
+    required this.createdAt,
+  });
+  factory PaymentReport.fromJson(Json json) => PaymentReport(
+    id: json.str('id'),
+    reference: json.str('reference'),
+    amount: json.decimal('amount'),
+    currency: currencyFromApi(json.str('currency')),
+    paidAt: json.date('paidAt'),
+    status: switch (json.str('status')) {
+      'REPORTED' => PaymentStatus.reported,
+      'VERIFIED' => PaymentStatus.verified,
+      'REJECTED' => PaymentStatus.rejected,
+      final other => throw FormatException(
+        'Estado de pago desconocido: $other',
+      ),
+    },
+    rejectionReason: json.strOrNull('rejectionReason'),
+    createdAt: json.date('createdAt'),
+  );
+  final String id;
+  final String reference;
+  final String amount;
+  final Currency currency;
+  final DateTime paidAt;
+  final PaymentStatus status;
+  final String? rejectionReason;
+  final DateTime createdAt;
+}
+
+class StatusChange {
+  const StatusChange({
+    required this.status,
+    required this.note,
+    required this.createdAt,
+  });
+  factory StatusChange.fromJson(Json json) => StatusChange(
+    status: orderStatusFromApi(json.str('toStatus')),
+    note: json.strOrNull('note'),
+    createdAt: json.date('createdAt'),
+  );
+  final OrderStatus status;
+  final String? note;
+  final DateTime createdAt;
+}
+
+class Order {
+  const Order({
+    required this.id,
+    required this.code,
+    required this.status,
+    required this.chargedCurrency,
+    required this.usdVesRate,
+    required this.subtotalUsdCents,
+    required this.shippingUsdCents,
+    required this.totalUsdCents,
+    required this.totalCharged,
+    required this.recipientName,
+    required this.phone,
+    required this.state,
+    required this.city,
+    required this.municipality,
+    required this.line1,
+    required this.referencePoint,
+    required this.shippingZoneName,
+    required this.carrier,
+    required this.trackingCode,
+    required this.paymentDueAt,
+    required this.createdAt,
+    required this.items,
+    required this.paymentMethodName,
+    required this.paymentInstructions,
+    required this.payments,
+    required this.history,
+  });
+
+  factory Order.fromJson(Json json) {
+    final method = json.obj('paymentMethod');
+    return Order(
+      id: json.str('id'),
+      code: json.str('code'),
+      status: orderStatusFromApi(json.str('status')),
+      chargedCurrency: currencyFromApi(json.str('chargedCurrency')),
+      usdVesRate: json.decimalOrNull('usdVesRate'),
+      subtotalUsdCents: json.integer('subtotalUsdCents'),
+      shippingUsdCents: json.integer('shippingUsdCents'),
+      totalUsdCents: json.integer('totalUsdCents'),
+      totalCharged: json.decimal('totalCharged'),
+      recipientName: json.str('recipientName'),
+      phone: json.str('phone'),
+      state: json.str('state'),
+      city: json.str('city'),
+      municipality: json.strOrNull('municipality'),
+      line1: json.str('line1'),
+      referencePoint: json.strOrNull('referencePoint'),
+      shippingZoneName: json.str('shippingZoneName'),
+      carrier: json.str('carrier'),
+      trackingCode: json.strOrNull('trackingCode'),
+      paymentDueAt: json.date('paymentDueAt'),
+      createdAt: json.date('createdAt'),
+      items: asList(json['items'], OrderItem.fromJson),
+      paymentMethodName: method.str('name'),
+      paymentInstructions: method.str('instructions'),
+      payments: asList(json['payments'], PaymentReport.fromJson),
+      history: asList(json['history'], StatusChange.fromJson),
+    );
+  }
+
+  final String id;
+  final String code;
+  final OrderStatus status;
+  final Currency chargedCurrency;
+  final String? usdVesRate;
+  final int subtotalUsdCents;
+  final int shippingUsdCents;
+  final int totalUsdCents;
+
+  /// Monto exacto a pagar en [chargedCurrency], congelado al crear el pedido.
+  final String totalCharged;
+  final String recipientName;
+  final String phone;
+  final String state;
+  final String city;
+  final String? municipality;
+  final String line1;
+  final String? referencePoint;
+  final String shippingZoneName;
+  final String carrier;
+  final String? trackingCode;
+  final DateTime paymentDueAt;
+  final DateTime createdAt;
+  final List<OrderItem> items;
+  final String paymentMethodName;
+  final String paymentInstructions;
+  final List<PaymentReport> payments;
+  final List<StatusChange> history;
+
+  bool get canReportPayment => status == OrderStatus.pendingPayment;
+  bool get canCancel => status == OrderStatus.pendingPayment;
+}
+
+/// Lo que el cliente declara haber pagado.
+class PaymentInput {
+  const PaymentInput({
+    required this.reference,
+    required this.amount,
+    required this.paidAt,
+    this.originBank,
+  });
+  final String reference;
+  final String amount;
+  final DateTime paidAt;
+  final String? originBank;
+
+  Json toJson() => {
+    'reference': reference,
+    'amount': amount,
+    'paidAt': paidAt.toUtc().toIso8601String(),
+    if (originBank != null && originBank!.trim().isNotEmpty)
+      'originBank': originBank!.trim(),
+  };
+}
