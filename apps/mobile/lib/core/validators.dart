@@ -181,3 +181,16 @@ String? validateReturnReason(String? value) {
   if (text.length > 500) return 'El motivo admite hasta 500 caracteres';
   return null;
 }
+
+/// Reseña: título opcional de hasta 80 y texto de 10 a 1000 caracteres.
+String? validateReviewTitle(String? value) => (value?.trim().length ?? 0) > 80
+    ? 'El título admite hasta 80 caracteres'
+    : null;
+
+String? validateReviewBody(String? value) {
+  final text = value?.trim() ?? '';
+  if (text.isEmpty) return 'Cuéntanos tu experiencia';
+  if (text.length < 10) return 'Cuéntanos un poco más (mínimo 10 caracteres)';
+  if (text.length > 1000) return 'La reseña admite hasta 1000 caracteres';
+  return null;
+}

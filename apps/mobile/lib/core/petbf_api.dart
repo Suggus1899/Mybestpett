@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import '../models/catalog.dart';
 import '../models/json.dart';
+import '../models/reviews.dart';
 import '../models/shop.dart';
 import 'api_client.dart';
 import 'proof.dart';
@@ -170,6 +171,50 @@ class PetbfApi {
 
   Future<Animal> animal(String slug) async => Animal.fromJson(
     asJson(await client.get('/animals/${Uri.encodeComponent(slug)}')),
+  );
+
+  // ---------- Reseñas y recomendaciones ----------
+
+  Future<ReviewPage> reviews(
+    String slug, {
+    ReviewSort sort = ReviewSort.recent,
+    int page = 1,
+  }) async => ReviewPage.fromJson(
+    asJson(
+      await client.get(
+        '/products/${Uri.encodeComponent(slug)}/reviews',
+        query: {'sort': sort.name, 'page': '$page', 'pageSize': '10'},
+      ),
+    ),
+  );
+
+  Future<MyReview> myReview(String slug) async => MyReview.fromJson(
+    asJson(
+      await client.get(
+        '/products/${Uri.encodeComponent(slug)}/reviews/mine',
+        auth: true,
+      ),
+    ),
+  );
+
+  /// Crea o edita la reseña propia; responde como [myReview].
+  Future<MyReview> saveReview(String slug, ReviewInput input) async =>
+      MyReview.fromJson(
+        asJson(
+          await client.put(
+            '/products/${Uri.encodeComponent(slug)}/reviews/mine',
+            body: input.toJson(),
+          ),
+        ),
+      );
+
+  Future<void> deleteReview(String slug) =>
+      client.delete('/products/${Uri.encodeComponent(slug)}/reviews/mine');
+
+  /// Hasta 4 productos para "También te puede gustar".
+  Future<List<ProductCard>> recommendations(String slug) async => asList(
+    await client.get('/products/${Uri.encodeComponent(slug)}/recommendations'),
+    ProductCard.fromJson,
   );
 
   /// Especies de animales vivos que la tienda acepta.

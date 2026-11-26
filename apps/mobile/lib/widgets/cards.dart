@@ -5,6 +5,7 @@ import '../core/format.dart';
 import '../core/theme.dart';
 import '../models/catalog.dart';
 import 'common.dart';
+import 'rating.dart';
 
 /// Rejilla de 2 columnas para tarjetas.
 const cardGridDelegate = SliverGridDelegateWithMaxCrossAxisExtent(
@@ -65,6 +66,10 @@ class ProductTile extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 4),
+              if (product.rating.hasReviews) ...[
+                RatingStars(product.rating, size: 12),
+                const SizedBox(height: 2),
+              ],
               if (price != null)
                 PriceView(
                   usdCents: price,
