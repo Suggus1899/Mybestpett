@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
+import { api } from '@/lib/api';
 import { isStaff } from '@/lib/guards';
 import { getCurrentUser } from '@/lib/session';
 
@@ -11,8 +12,13 @@ const nav = [
 
 async function AccountLink() {
   const user = await getCurrentUser();
+  // Si el carrito no responde, la cabecera sigue funcionando sin el contador.
+  const count = user ? await api.cart().then((c) => c.itemCount, () => 0) : 0;
   return user ? (
     <span className="flex gap-4">
+      <Link href="/carrito" className="font-bold hover:underline">
+        Carrito{count > 0 && <span aria-label={`${count} productos`}> ({count})</span>}
+      </Link>
       {isStaff(user) && (
         <Link href="/admin" className="font-bold hover:underline">
           Panel

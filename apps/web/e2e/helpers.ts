@@ -58,3 +58,35 @@ export async function open(page: Page, path: string) {
   await ready(page);
   return response;
 }
+
+// Producto propio de cada prueba de compra, para no gastar el stock del seed
+// que usan las pruebas del inventario. Devuelve su nombre y su slug.
+// Stock por defecto 10: menos que el seed, para no alterar sus órdenes.
+const created: string[] = [];
+export async function createProduct(priceUsdCents: number, stock = 10) {
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  const categories: { id: string; slug: string }[] = await fetch(`${API}/categories`).then((r) =>
+    r.json(),
+  );
+  const perros = categories.find((c) => c.slug === 'perros')!;
+  const product = await post(
+    '/manage/products',
+    {
+      name: `Pelota E2E ${id}`,
+      description: 'Producto de prueba',
+      categoryId: perros.id,
+      variants: [{ sku: `E2E-${id}`.toUpperCase().slice(0, 40), name: 'Unidad', priceUsdCents, stock }],
+    },
+    await admin(),
+  );
+  created.push(product.id);
+  return { name: product.name as string, slug: product.slug as string };
+}
+
+// Al terminar, se retiran de la tienda y del inventario para no ensuciar el
+// catálogo que revisan las otras pruebas.
+export async function retireTestProducts() {
+  for (const id of created.splice(0)) {
+    await post(`/manage/products/${id}`, { isActive: false }, await admin(), 'PATCH');
+  }
+}

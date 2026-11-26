@@ -22,9 +22,11 @@ import { UsersModule } from './users/users.module.js';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, validate: validateEnv }),
-    // Límite general: 120 peticiones por minuto por IP.
+    // Límite general por IP (120 por minuto si no se indica THROTTLE_LIMIT).
     ThrottlerModule.forRoot({
-      throttlers: [{ ttl: 60_000, limit: 120 }],
+      throttlers: [
+        { ttl: 60_000, limit: () => Number(process.env.THROTTLE_LIMIT ?? 120) },
+      ],
       // Las pruebas hacen muchas peticiones seguidas desde la misma IP.
       skipIf: () => process.env.NODE_ENV === 'test',
     }),

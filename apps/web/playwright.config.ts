@@ -26,7 +26,8 @@ export default defineConfig({
       cwd: '../api',
       url: 'http://localhost:3001/v1/health',
       reuseExistingServer: !isCI,
-      env: { PORT: '3001', AUTH_THROTTLE_LIMIT: '200' },
+      // Todas las peticiones de la web llegan desde la misma IP (el servidor de Next).
+      env: { PORT: '3001', AUTH_THROTTLE_LIMIT: '1000', THROTTLE_LIMIT: '100000' },
     },
     {
       command: 'pnpm start',
