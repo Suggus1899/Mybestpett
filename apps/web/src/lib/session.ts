@@ -11,7 +11,12 @@ import {
 // Los tokens viven en cookies httpOnly: el JavaScript del navegador no puede
 // leerlos, lo que protege la sesión si alguna vez hay un fallo de XSS.
 
-export type Role = 'CUSTOMER' | 'OPERATOR' | 'ADMIN';
+export type Role =
+  | 'CUSTOMER'
+  | 'ADMIN'
+  | 'ORDERS_OPERATOR'
+  | 'CATALOG_MANAGER'
+  | 'ADOPTION_COORDINATOR';
 
 export interface SessionUser {
   id: string;
@@ -19,7 +24,7 @@ export interface SessionUser {
   firstName: string;
   lastName: string;
   phone: string | null;
-  role: Role;
+  roles: Role[];
 }
 
 export interface AuthTokens {

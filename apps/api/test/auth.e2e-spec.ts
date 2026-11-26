@@ -29,7 +29,7 @@ describe('Auth y roles (e2e)', () => {
 
   beforeEach(async () => {
     await prisma.$executeRawUnsafe(
-      'TRUNCATE TABLE audit_logs, sessions, users RESTART IDENTITY CASCADE',
+      'TRUNCATE TABLE audit_logs, sessions, user_roles, users RESTART IDENTITY CASCADE',
     );
   });
 
@@ -45,7 +45,7 @@ describe('Auth y roles (e2e)', () => {
       .send(customer)
       .expect(201);
     expect(res.body.user.email).toBe('cliente@ejemplo.com');
-    expect(res.body.user.role).toBe('CUSTOMER');
+    expect(res.body.user.roles).toEqual(['CUSTOMER']);
     expect(res.body.user.passwordHash).toBeUndefined();
     expect(res.body.accessToken).toBeTypeOf('string');
 
@@ -122,7 +122,7 @@ describe('Auth y roles (e2e)', () => {
           passwordHash: await argon2.hash('clave-admin-123'),
           firstName: 'Gus',
           lastName: 'Admin',
-          role: 'ADMIN',
+          roles: { create: [{ role: 'CUSTOMER' }, { role: 'ADMIN' }] },
         },
       });
       const { body } = await api()
@@ -139,32 +139,62 @@ describe('Auth y roles (e2e)', () => {
         .expect(403);
     });
 
-    it('el admin cambia un rol y queda en la auditoría', async () => {
+    it('el admin asigna varios roles y queda en la auditoría', async () => {
       const admin = await loginAsAdmin();
       const { body: reg } = await api()
         .post('/v1/auth/register')
         .send(customer);
 
       const res = await api()
-        .patch(`/v1/users/${reg.user.id}/role`)
+        .put(`/v1/users/${reg.user.id}/roles`)
         .set('Authorization', `Bearer ${admin.accessToken}`)
-        .send({ role: 'OPERATOR' })
+        .send({ roles: ['CATALOG_MANAGER', 'ADOPTION_COORDINATOR'] })
         .expect(200);
-      expect(res.body.role).toBe('OPERATOR');
+      // CUSTOMER se conserva siempre.
+      expect(res.body.roles).toEqual([
+        'CUSTOMER',
+        'CATALOG_MANAGER',
+        'ADOPTION_COORDINATOR',
+      ]);
 
       const log = await prisma.auditLog.findFirstOrThrow({
-        where: { action: 'user.role_changed', entityId: reg.user.id },
+        where: { action: 'user.roles_changed', entityId: reg.user.id },
       });
       expect(log.actorId).toBe(admin.user.id);
-      expect(log.metadata).toEqual({ from: 'CUSTOMER', to: 'OPERATOR' });
+      expect(log.metadata).toEqual({
+        from: ['CUSTOMER'],
+        to: ['CUSTOMER', 'CATALOG_MANAGER', 'ADOPTION_COORDINATOR'],
+      });
+
+      const filtered = await api()
+        .get('/v1/users?role=CATALOG_MANAGER')
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .expect(200);
+      expect(filtered.body.total).toBe(1);
     });
 
-    it('el admin no puede cambiar su propio rol', async () => {
+    it('un gestor de catálogo no puede gestionar cuentas', async () => {
+      const admin = await loginAsAdmin();
+      const { body: reg } = await api()
+        .post('/v1/auth/register')
+        .send(customer);
+      await api()
+        .put(`/v1/users/${reg.user.id}/roles`)
+        .set('Authorization', `Bearer ${admin.accessToken}`)
+        .send({ roles: ['CATALOG_MANAGER'] });
+
+      await api()
+        .get('/v1/users')
+        .set('Authorization', `Bearer ${reg.accessToken}`)
+        .expect(403);
+    });
+
+    it('el admin no puede quitarse su propio rol de admin', async () => {
       const admin = await loginAsAdmin();
       await api()
-        .patch(`/v1/users/${admin.user.id}/role`)
+        .put(`/v1/users/${admin.user.id}/roles`)
         .set('Authorization', `Bearer ${admin.accessToken}`)
-        .send({ role: 'CUSTOMER' })
+        .send({ roles: ['CUSTOMER'] })
         .expect(400);
     });
 

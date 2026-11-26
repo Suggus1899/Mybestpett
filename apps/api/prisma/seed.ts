@@ -26,16 +26,22 @@ async function main() {
     if (password.length < 12) {
       throw new Error('SEED_ADMIN_PASSWORD debe tener al menos 12 caracteres');
     }
-    await prisma.user.upsert({
+    const admin = await prisma.user.upsert({
       where: { email },
-      update: { role: 'ADMIN', isActive: true },
+      update: { isActive: true },
       create: {
         email,
         passwordHash: await argon2.hash(password),
         firstName: 'Admin',
         lastName: 'Petbf',
-        role: 'ADMIN',
       },
+    });
+    await prisma.userRole.createMany({
+      data: [
+        { userId: admin.id, role: 'CUSTOMER' },
+        { userId: admin.id, role: 'ADMIN' },
+      ],
+      skipDuplicates: true,
     });
     console.log(`Administrador listo: ${email}`);
   } else {

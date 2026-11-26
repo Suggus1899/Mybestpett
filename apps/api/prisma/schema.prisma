@@ -16,10 +16,13 @@ datasource db {
 
 // ---------- Usuarios, sesiones y auditoría ----------
 
+// Una persona puede tener varios roles (por ejemplo catálogo y adopciones).
 enum Role {
-  CUSTOMER // cliente registrado
-  OPERATOR // personal que gestiona pedidos, pagos y catálogo
-  ADMIN // dueño: además gestiona usuarios y roles
+  CUSTOMER // cliente registrado; todos lo tienen
+  ADMIN // dueño: acceso total, gestiona cuentas y roles
+  ORDERS_OPERATOR // verifica pagos y gestiona pedidos
+  CATALOG_MANAGER // productos, precios, stock y animales en venta
+  ADOPTION_COORDINATOR // fichas de adopción y solicitudes
 }
 
 model User {
@@ -29,15 +32,30 @@ model User {
   firstName    String
   lastName     String
   phone        String?
-  role         Role     @default(CUSTOMER)
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  sessions  Session[]
-  auditLogs AuditLog[]
+  roles        UserRole[] @relation("UserRoles")
+  rolesGranted UserRole[] @relation("RolesGranted")
+  sessions     Session[]
+  auditLogs    AuditLog[]
 
   @@map("users")
+}
+
+model UserRole {
+  userId      String   @db.Uuid
+  role        Role
+  grantedById String?  @db.Uuid // null si lo asignó el sistema (registro o seed)
+  grantedAt   DateTime @default(now())
+
+  user      User  @relation("UserRoles", fields: [userId], references: [id], onDelete: Cascade)
+  grantedBy User? @relation("RolesGranted", fields: [grantedById], references: [id], onDelete: SetNull)
+
+  @@id([userId, role])
+  @@index([role])
+  @@map("user_roles")
 }
 
 // Una sesión por dispositivo. Guarda solo el hash del refresh token.

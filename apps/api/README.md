@@ -28,7 +28,7 @@ pnpm test:e2e                 # usa una base desechable: la vacía en cada prueb
   refresh token opaco rotativo guardado como hash en `sessions`.
 - Guards globales, en este orden: límite de peticiones, sesión (`JwtAuthGuard`)
   y rol (`RolesGuard`). Una ruta es privada salvo que lleve `@Public()`; se
-  restringe por rol con `@Roles(['ADMIN'])`.
+  restringe con `@Roles([...])`: basta uno de los roles, y `ADMIN` siempre pasa.
 - `src/users`: gestión de cuentas, solo para `ADMIN`.
 - `src/audit`: `AuditService.record()` deja constancia de acciones sensibles.
 
@@ -43,5 +43,5 @@ pnpm test:e2e                 # usa una base desechable: la vacía en cada prueb
 | POST | /v1/auth/logout | público (con refresh token) |
 | GET | /v1/auth/me | con sesión |
 | GET | /v1/users | ADMIN |
-| PATCH | /v1/users/:id/role | ADMIN |
+| PUT | /v1/users/:id/roles | ADMIN |
 | PATCH | /v1/users/:id/status | ADMIN |

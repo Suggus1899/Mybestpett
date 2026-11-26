@@ -43,13 +43,22 @@ export class JwtAuthGuard implements CanActivate {
     // desactivación tengan efecto inmediato, sin esperar a que venza el token.
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
-      select: { id: true, email: true, role: true, isActive: true },
+      select: {
+        id: true,
+        email: true,
+        isActive: true,
+        roles: { select: { role: true } },
+      },
     });
     if (!user || !user.isActive) {
       throw new UnauthorizedException('Usuario no disponible');
     }
 
-    request.user = { id: user.id, email: user.email, role: user.role };
+    request.user = {
+      id: user.id,
+      email: user.email,
+      roles: user.roles.map((r) => r.role),
+    };
     return true;
   }
 }

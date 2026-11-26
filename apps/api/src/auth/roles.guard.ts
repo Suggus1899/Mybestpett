@@ -9,6 +9,7 @@ import type { AuthUser } from './auth.types.js';
 import { Roles } from './decorators.js';
 
 // Se ejecuta después de JwtAuthGuard. Sin @Roles basta con tener sesión.
+// Con @Roles basta con tener uno de los roles indicados, o ser ADMIN.
 @Injectable()
 export class RolesGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
@@ -21,7 +22,10 @@ export class RolesGuard implements CanActivate {
     if (!roles || roles.length === 0) return true;
 
     const user: AuthUser | undefined = context.switchToHttp().getRequest().user;
-    if (!user || !roles.includes(user.role)) {
+    const allowed =
+      user?.roles.includes('ADMIN') ||
+      user?.roles.some((role) => roles.includes(role));
+    if (!allowed) {
       throw new ForbiddenException('No tienes permiso para esta acción');
     }
     return true;

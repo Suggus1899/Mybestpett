@@ -1,5 +1,5 @@
 -- CreateEnum
-CREATE TYPE "Role" AS ENUM ('CUSTOMER', 'OPERATOR', 'ADMIN');
+CREATE TYPE "Role" AS ENUM ('CUSTOMER', 'ADMIN', 'ORDERS_OPERATOR', 'CATALOG_MANAGER', 'ADOPTION_COORDINATOR');
 
 -- CreateEnum
 CREATE TYPE "Species" AS ENUM ('DOG', 'CAT', 'BIRD', 'FISH', 'RODENT', 'REPTILE', 'OTHER');
@@ -24,12 +24,21 @@ CREATE TABLE "users" (
     "firstName" TEXT NOT NULL,
     "lastName" TEXT NOT NULL,
     "phone" TEXT,
-    "role" "Role" NOT NULL DEFAULT 'CUSTOMER',
     "isActive" BOOLEAN NOT NULL DEFAULT true,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
     CONSTRAINT "users_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
+CREATE TABLE "user_roles" (
+    "userId" UUID NOT NULL,
+    "role" "Role" NOT NULL,
+    "grantedById" UUID,
+    "grantedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "user_roles_pkey" PRIMARY KEY ("userId","role")
 );
 
 -- CreateTable
@@ -177,6 +186,9 @@ CREATE TABLE "exchange_rates" (
 CREATE UNIQUE INDEX "users_email_key" ON "users"("email");
 
 -- CreateIndex
+CREATE INDEX "user_roles_role_idx" ON "user_roles"("role");
+
+-- CreateIndex
 CREATE INDEX "sessions_userId_idx" ON "sessions"("userId");
 
 -- CreateIndex
@@ -223,6 +235,12 @@ CREATE INDEX "exchange_rates_quote_effectiveAt_idx" ON "exchange_rates"("quote",
 
 -- CreateIndex
 CREATE UNIQUE INDEX "exchange_rates_quote_source_effectiveAt_key" ON "exchange_rates"("quote", "source", "effectiveAt");
+
+-- AddForeignKey
+ALTER TABLE "user_roles" ADD CONSTRAINT "user_roles_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "user_roles" ADD CONSTRAINT "user_roles_grantedById_fkey" FOREIGN KEY ("grantedById") REFERENCES "users"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "sessions" ADD CONSTRAINT "sessions_userId_fkey" FOREIGN KEY ("userId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;

@@ -3,8 +3,9 @@ import { Role } from '../generated/prisma/enums.js';
 
 export const userIdSchema = z.uuid('Id de usuario inválido');
 
-export const changeRoleSchema = z.object({
-  role: z.enum(Role),
+// Lista completa de roles que tendrá la persona (reemplaza la anterior).
+export const setRolesSchema = z.object({
+  roles: z.array(z.enum(Role)).max(Object.keys(Role).length),
 });
 
 export const changeStatusSchema = z.object({
@@ -17,6 +18,6 @@ export const listUsersSchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
 });
 
-export type ChangeRoleDto = z.infer<typeof changeRoleSchema>;
+export type SetRolesDto = z.infer<typeof setRolesSchema>;
 export type ChangeStatusDto = z.infer<typeof changeStatusSchema>;
 export type ListUsersQuery = z.infer<typeof listUsersSchema>;

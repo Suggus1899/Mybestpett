@@ -1,14 +1,22 @@
-import { Body, Controller, Get, Param, Patch, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Put,
+  Query,
+} from '@nestjs/common';
 import type { AuthUser } from '../auth/auth.types.js';
 import { CurrentUser, Roles } from '../auth/decorators.js';
 import {
-  changeRoleSchema,
   changeStatusSchema,
   listUsersSchema,
+  setRolesSchema,
   userIdSchema,
-  type ChangeRoleDto,
   type ChangeStatusDto,
   type ListUsersQuery,
+  type SetRolesDto,
 } from './users.schemas.js';
 import { UsersService } from './users.service.js';
 
@@ -23,13 +31,13 @@ export class UsersController {
     return this.users.list(query);
   }
 
-  @Patch(':id/role')
-  changeRole(
+  @Put(':id/roles')
+  setRoles(
     @CurrentUser() actor: AuthUser,
     @Param('id', { schema: userIdSchema }) id: string,
-    @Body({ schema: changeRoleSchema }) dto: ChangeRoleDto,
+    @Body({ schema: setRolesSchema }) dto: SetRolesDto,
   ) {
-    return this.users.changeRole(actor, id, dto);
+    return this.users.setRoles(actor, id, dto);
   }
 
   @Patch(':id/status')

@@ -5,11 +5,12 @@ import {
 } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service.js';
 import type { AuthUser } from '../auth/auth.types.js';
+import { Role } from '../generated/prisma/enums.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type {
-  ChangeRoleDto,
   ChangeStatusDto,
   ListUsersQuery,
+  SetRolesDto,
 } from './users.schemas.js';
 
 const select = {
@@ -18,10 +19,21 @@ const select = {
   firstName: true,
   lastName: true,
   phone: true,
-  role: true,
   isActive: true,
   createdAt: true,
+  roles: { select: { role: true }, orderBy: { role: 'asc' } },
 } as const;
+
+type Row = { roles: { role: Role }[] } & Record<string, unknown>;
+
+const serialize = <T extends Row>(user: T) => ({
+  ...user,
+  roles: user.roles.map((r) => r.role),
+});
+
+// Mismo orden que el enum (y que devuelve PostgreSQL), sin duplicados.
+const inRoleOrder = (roles: Role[]) =>
+  Object.values(Role).filter((role) => roles.includes(role));
 
 @Injectable()
 export class UsersService {
@@ -31,7 +43,7 @@ export class UsersService {
   ) {}
 
   async list(query: ListUsersQuery) {
-    const where = query.role ? { role: query.role } : {};
+    const where = query.role ? { roles: { some: { role: query.role } } } : {};
     const [items, total] = await this.prisma.$transaction([
       this.prisma.user.findMany({
         where,
@@ -42,36 +54,59 @@ export class UsersService {
       }),
       this.prisma.user.count({ where }),
     ]);
-    return { items, total, page: query.page, pageSize: query.pageSize };
+    return {
+      items: items.map(serialize),
+      total,
+      page: query.page,
+      pageSize: query.pageSize,
+    };
   }
 
-  async changeRole(actor: AuthUser, userId: string, dto: ChangeRoleDto) {
+  async setRoles(actor: AuthUser, userId: string, dto: SetRolesDto) {
+    // CUSTOMER siempre se conserva: todo el personal también puede comprar.
+    const next = inRoleOrder(['CUSTOMER', ...dto.roles]);
     // Evita que el administrador se quite su propio acceso por error.
-    if (actor.id === userId) {
-      throw new BadRequestException('No puedes cambiar tu propio rol');
-    }
-    return this.prisma.$transaction(async (tx) => {
-      const user = await tx.user.findUnique({ where: { id: userId } });
-      if (!user) throw new NotFoundException('Usuario no encontrado');
-      if (user.role === dto.role)
-        return tx.user.findUniqueOrThrow({ where: { id: userId }, select });
-
-      const updated = await tx.user.update({
-        where: { id: userId },
-        data: { role: dto.role },
-        select,
-      });
-      await this.audit.record(
-        {
-          actorId: actor.id,
-          action: 'user.role_changed',
-          entityType: 'user',
-          entityId: userId,
-          metadata: { from: user.role, to: dto.role },
-        },
-        tx,
+    if (actor.id === userId && !next.includes('ADMIN')) {
+      throw new BadRequestException(
+        'No puedes quitarte el rol de administrador',
       );
-      return updated;
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      const user = await tx.user.findUnique({
+        where: { id: userId },
+        select: { roles: { select: { role: true } } },
+      });
+      if (!user) throw new NotFoundException('Usuario no encontrado');
+      const current = inRoleOrder(user.roles.map((r) => r.role));
+
+      const added = next.filter((role) => !current.includes(role));
+      const removed = current.filter((role) => !next.includes(role));
+      if (added.length > 0) {
+        await tx.userRole.createMany({
+          data: added.map((role) => ({ userId, role, grantedById: actor.id })),
+        });
+      }
+      if (removed.length > 0) {
+        await tx.userRole.deleteMany({
+          where: { userId, role: { in: removed } },
+        });
+      }
+      if (added.length > 0 || removed.length > 0) {
+        await this.audit.record(
+          {
+            actorId: actor.id,
+            action: 'user.roles_changed',
+            entityType: 'user',
+            entityId: userId,
+            metadata: { from: current, to: next },
+          },
+          tx,
+        );
+      }
+      return serialize(
+        await tx.user.findUniqueOrThrow({ where: { id: userId }, select }),
+      );
     });
   }
 
@@ -80,8 +115,8 @@ export class UsersService {
       throw new BadRequestException('No puedes desactivar tu propia cuenta');
     }
     return this.prisma.$transaction(async (tx) => {
-      const user = await tx.user.findUnique({ where: { id: userId } });
-      if (!user) throw new NotFoundException('Usuario no encontrado');
+      const exists = await tx.user.count({ where: { id: userId } });
+      if (!exists) throw new NotFoundException('Usuario no encontrado');
 
       const updated = await tx.user.update({
         where: { id: userId },
@@ -104,7 +139,7 @@ export class UsersService {
         },
         tx,
       );
-      return updated;
+      return serialize(updated);
     });
   }
 }

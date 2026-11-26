@@ -33,6 +33,7 @@ pnpm dev                                     # web en :3000, API en :3001
 
 - Precios en céntimos enteros de USD; Bs y euros se calculan con la tasa del BCV
   y cada pedido guardará la tasa con la que se cobró.
-- Comprar exige cuenta. Roles: `CUSTOMER`, `OPERATOR` y `ADMIN`.
+- Comprar exige cuenta. Cada persona puede tener varios roles: `CUSTOMER`, `ADMIN`,
+  `ORDERS_OPERATOR`, `CATALOG_MANAGER` y `ADOPTION_COORDINATOR`.
 - La web guarda los tokens en cookies httpOnly y nunca los expone al navegador.
 - Las acciones sensibles quedan en `audit_logs`.

@@ -3,11 +3,17 @@ import { redirect } from 'next/navigation';
 import { Suspense } from 'react';
 import { Button } from '@/components/ui';
 import { logoutAction } from '@/lib/actions';
-import { getCurrentUser } from '@/lib/session';
+import { getCurrentUser, type Role } from '@/lib/session';
 
 export const metadata: Metadata = { title: 'Mi cuenta' };
 
-const roleLabel = { CUSTOMER: 'Cliente', OPERATOR: 'Operador', ADMIN: 'Administrador' };
+const roleLabel: Record<Role, string> = {
+  CUSTOMER: 'Cliente',
+  ADMIN: 'Administrador',
+  ORDERS_OPERATOR: 'Pagos y pedidos',
+  CATALOG_MANAGER: 'Catálogo',
+  ADOPTION_COORDINATOR: 'Adopciones',
+};
 
 async function Account() {
   // La API valida el token: esta página nunca confía solo en la cookie.
@@ -27,7 +33,7 @@ async function Account() {
         <dt className="font-bold">Teléfono</dt>
         <dd>{user.phone ?? 'Sin registrar'}</dd>
         <dt className="font-bold">Tipo de cuenta</dt>
-        <dd>{roleLabel[user.role]}</dd>
+        <dd>{user.roles.map((role) => roleLabel[role]).join(', ')}</dd>
       </dl>
       <form action={logoutAction}>
         <Button type="submit" variant="secondary">

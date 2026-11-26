@@ -8,7 +8,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as argon2 from 'argon2';
 import type { Env } from '../config/env.js';
 import { AuditService } from '../audit/audit.service.js';
-import { Prisma, type User } from '../generated/prisma/client.js';
+import { Prisma, type Role, type User } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { AccessTokenPayload, RequestMeta } from './auth.types.js';
 import type { LoginDto, RefreshDto, RegisterDto } from './auth.schemas.js';
@@ -28,8 +28,8 @@ export interface AuthTokens {
 
 export type PublicUser = Pick<
   User,
-  'id' | 'email' | 'firstName' | 'lastName' | 'phone' | 'role' | 'createdAt'
->;
+  'id' | 'email' | 'firstName' | 'lastName' | 'phone' | 'createdAt'
+> & { roles: Role[] };
 
 const publicUserSelect = {
   id: true,
@@ -37,9 +37,24 @@ const publicUserSelect = {
   firstName: true,
   lastName: true,
   phone: true,
-  role: true,
   createdAt: true,
+  roles: { select: { role: true }, orderBy: { role: 'asc' } },
 } as const;
+
+type UserWithRoles = Omit<PublicUser, 'roles'> & { roles: { role: Role }[] };
+
+export function toPublicUser(user: UserWithRoles): PublicUser {
+  const { id, email, firstName, lastName, phone, createdAt } = user;
+  return {
+    id,
+    email,
+    firstName,
+    lastName,
+    phone,
+    createdAt,
+    roles: user.roles.map((r) => r.role),
+  };
+}
 
 @Injectable()
 export class AuthService {
@@ -58,16 +73,18 @@ export class AuthService {
     const passwordHash = await argon2.hash(dto.password);
     let user: PublicUser;
     try {
-      user = await this.prisma.user.create({
+      const created = await this.prisma.user.create({
         data: {
           email: dto.email,
           passwordHash,
           firstName: dto.firstName,
           lastName: dto.lastName,
           phone: dto.phone,
+          roles: { create: { role: 'CUSTOMER' } },
         },
         select: publicUserSelect,
       });
+      user = toPublicUser(created);
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -85,13 +102,14 @@ export class AuthService {
       entityId: user.id,
       ip: meta.ip,
     });
-    const tokens = await this.issueTokens(user.id, user.role, meta);
+    const tokens = await this.issueTokens(user.id, meta);
     return { user, ...tokens };
   }
 
   async login(dto: LoginDto, meta: RequestMeta) {
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
+      include: { roles: { select: { role: true }, orderBy: { role: 'asc' } } },
     });
     const valid = await argon2.verify(
       user?.passwordHash ?? (await this.dummyHash),
@@ -116,8 +134,8 @@ export class AuthService {
       entityId: user.id,
       ip: meta.ip,
     });
-    const tokens = await this.issueTokens(user.id, user.role, meta);
-    return { user: this.toPublicUser(user), ...tokens };
+    const tokens = await this.issueTokens(user.id, meta);
+    return { user: toPublicUser(user), ...tokens };
   }
 
   // Rotación: cada uso del refresh token entrega uno nuevo e invalida el anterior.
@@ -127,7 +145,7 @@ export class AuthService {
 
     const session = await this.prisma.session.findUnique({
       where: { id: parsed.sessionId },
-      include: { user: { select: { role: true, isActive: true } } },
+      include: { user: { select: { isActive: true } } },
     });
     if (
       !session ||
@@ -169,10 +187,7 @@ export class AuthService {
     if (count === 0) throw new UnauthorizedException('Sesión inválida');
 
     return {
-      accessToken: await this.signAccessToken(
-        session.userId,
-        session.user.role,
-      ),
+      accessToken: await this.signAccessToken(session.userId),
       accessTokenExpiresIn: this.accessTtl(),
       refreshToken: buildToken(session.id, secret),
     };
@@ -198,15 +213,15 @@ export class AuthService {
   }
 
   async me(userId: string): Promise<PublicUser> {
-    return this.prisma.user.findUniqueOrThrow({
+    const user = await this.prisma.user.findUniqueOrThrow({
       where: { id: userId },
       select: publicUserSelect,
     });
+    return toPublicUser(user);
   }
 
   private async issueTokens(
     userId: string,
-    role: User['role'],
     meta: RequestMeta,
   ): Promise<AuthTokens> {
     const secret = generateSecret();
@@ -221,23 +236,18 @@ export class AuthService {
       },
     });
     return {
-      accessToken: await this.signAccessToken(userId, role),
+      accessToken: await this.signAccessToken(userId),
       accessTokenExpiresIn: this.accessTtl(),
       refreshToken: buildToken(session.id, secret),
     };
   }
 
-  private signAccessToken(userId: string, role: User['role']) {
-    const payload: AccessTokenPayload = { sub: userId, role };
+  private signAccessToken(userId: string) {
+    const payload: AccessTokenPayload = { sub: userId };
     return this.jwt.signAsync(payload);
   }
 
   private accessTtl() {
     return this.config.get('JWT_ACCESS_TTL_SECONDS', { infer: true });
-  }
-
-  private toPublicUser(user: User): PublicUser {
-    const { id, email, firstName, lastName, phone, role, createdAt } = user;
-    return { id, email, firstName, lastName, phone, role, createdAt };
   }
 }
