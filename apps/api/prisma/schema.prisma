@@ -597,3 +597,29 @@ model PaymentProof {
 
   @@map("payment_proofs")
 }
+
+enum EmailStatus {
+  PENDING // por enviar (o reintentar)
+  SENT
+  FAILED // agotó los reintentos
+}
+
+// Bandeja de salida: los correos se guardan en la misma transacción que el
+// cambio que los origina y un proceso los envía después. Si el proveedor
+// falla, el pedido no se pierde y el correo se reintenta.
+model EmailOutbox {
+  id            String      @id @default(uuid()) @db.Uuid
+  to            String
+  subject       String
+  text          String
+  kind          String // order.created, order.paid, return.refunded…
+  status        EmailStatus @default(PENDING)
+  attempts      Int         @default(0)
+  lastError     String?
+  nextAttemptAt DateTime    @default(now())
+  sentAt        DateTime?
+  createdAt     DateTime    @default(now())
+
+  @@index([status, nextAttemptAt])
+  @@map("email_outbox")
+}

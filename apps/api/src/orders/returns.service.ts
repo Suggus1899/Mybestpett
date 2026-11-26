@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service.js';
+import { EmailService } from '../emails/email.service.js';
 import type { AuthUser } from '../auth/auth.types.js';
 import { paged, paginate } from '../common/pagination.js';
 import { Prisma } from '../generated/prisma/client.js';
@@ -55,6 +56,7 @@ export class ReturnsService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly orders: OrdersService,
+    private readonly emails: EmailService,
   ) {}
 
   // ---------- Cliente ----------
@@ -199,6 +201,7 @@ export class ReturnsService {
           'La devolución cambió de estado; recarga e inténtalo de nuevo',
         );
       }
+      await this.emails.returnEvent(tx, id, 'refunded');
       if (dto.restock) {
         const lines = current.items.filter((l) => l.orderItem.variantId);
         for (const line of lines) {
@@ -272,6 +275,11 @@ export class ReturnsService {
       if (count === 0) {
         throw new ConflictException('Esta devolución ya fue revisada');
       }
+      await this.emails.returnEvent(
+        tx,
+        id,
+        status === 'APPROVED' ? 'approved' : 'rejected',
+      );
       await this.audit.record(
         {
           actorId: actor.id,

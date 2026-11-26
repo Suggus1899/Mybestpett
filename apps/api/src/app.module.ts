@@ -13,6 +13,7 @@ import { CartModule } from './cart/cart.module.js';
 import { ClientIpThrottlerGuard } from './common/client-ip.js';
 import { PrismaExceptionFilter } from './common/prisma-exception.filter.js';
 import { validateEnv } from './config/env.js';
+import { EmailModule } from './emails/email.module.js';
 import { HealthController } from './health/health.controller.js';
 import { OrdersModule } from './orders/orders.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
@@ -33,6 +34,7 @@ import { UsersModule } from './users/users.module.js';
     }),
     PrismaModule,
     AuditModule,
+    EmailModule,
     AuthModule,
     UsersModule,
     CatalogModule,
