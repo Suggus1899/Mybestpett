@@ -44,7 +44,7 @@ Tienda en línea de **un solo vendedor** para Venezuela: productos para mascotas
 <td align="center" width="120">
 <a href="https://flutter.dev/" target="_blank"><img src="https://cdn.simpleicons.org/flutter/02569B" width="48" height="48" alt="Flutter" /></a>
 <br><sub><b><a href="https://flutter.dev/" target="_blank">Flutter</a></b></sub>
-<br><sub>App móvil (pendiente)</sub>
+<br><sub>App móvil</sub>
 </td>
 </tr>
 <tr>
@@ -116,7 +116,7 @@ Tienda en línea de **un solo vendedor** para Venezuela: productos para mascotas
 ```
    ┌──────────────────────────────┐      ┌──────────────────────────────┐
    │  Web · Next.js (port 3000)   │      │  App móvil · Flutter         │
-   │  tienda + panel del equipo   │      │  (fase posterior)            │
+   │  tienda + panel del equipo   │      │  iOS y Android (cliente)     │
    │  cookies httpOnly            │      │  almacenamiento seguro       │
    └──────────────┬───────────────┘      └──────────────┬───────────────┘
                   │            HTTPS · /v1               │
@@ -141,7 +141,7 @@ Web y móvil comparten una sola API. Los permisos se comprueban siempre en la AP
 |-----|-------------|--------|--------|
 | **api** | API REST compartida por web y móvil: cuentas, roles, catálogo, animales, inventario y tasas | 3001 | En desarrollo |
 | **web** | Tienda para clientes y panel del equipo en `/admin` | 3000 | En desarrollo |
-| **mobile** | App iOS y Android con las mismas pantallas de cliente | — | Pendiente |
+| **mobile** | App iOS y Android con las mismas pantallas de cliente ([README](apps/mobile/README.md)) | — | En desarrollo |
 
 ## 📦 Estructura del Monorepo
 
@@ -166,7 +166,7 @@ mybestpett/
 │   │   │   ├── components/  ← UI, catálogo y panel
 │   │   │   └── lib/         ← cliente de la API, sesión, guards y formatos
 │   │   └── e2e/             ← pruebas de navegador (Playwright)
-│   └── mobile/              ← Flutter (pendiente)
+│   └── mobile/              ← Flutter 3.50 (cliente: tienda, carrito, pedidos)
 │
 ├── .github/workflows/       ← CI
 ├── docker-compose.yml       ← PostgreSQL local
@@ -272,7 +272,7 @@ Una persona puede tener varios roles a la vez.
 | **Verificación en dos pasos** | Obligatoria para el equipo | 🚧 |
 | **Devoluciones** | Solicitud dentro de 3 días y reembolso registrado | ⏳ |
 | **Reservas y adopciones** | Reserva con señal y solicitud de adopción con cuestionario | ⏳ |
-| **App móvil** | Flutter sobre la misma API | ⏳ |
+| **App móvil** | Flutter sobre la misma API: tienda, animales, carrito, checkout, pago y pedidos | 🚧 |
 
 ✅ Listo · 🚧 En desarrollo · ⏳ Pendiente
 

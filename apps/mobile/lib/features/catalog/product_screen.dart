@@ -109,7 +109,7 @@ class _ProductViewState extends ConsumerState<_ProductView> {
   Future<void> _add() async {
     final variant = _variant;
     if (variant == null || _adding) return;
-    if (!ref.read(isSignedInProvider)) {
+    if (!isSignedIn(ref.read(sessionProvider))) {
       await context.push(
         Uri(
           path: '/entrar',

@@ -17,13 +17,9 @@ class ReportPaymentForm extends ConsumerStatefulWidget {
     super.key,
     required this.order,
     required this.onReported,
-    this.now,
   });
   final Order order;
   final VoidCallback onReported;
-
-  /// Para pruebas: reloj fijo.
-  final DateTime Function()? now;
 
   @override
   ConsumerState<ReportPaymentForm> createState() => _ReportPaymentFormState();
@@ -41,7 +37,7 @@ class _ReportPaymentFormState extends ConsumerState<ReportPaymentForm> {
   String? _error;
   String? _dateError;
 
-  DateTime _now() => (widget.now ?? DateTime.now)();
+  DateTime _now() => ref.read(clockProvider)();
 
   @override
   void dispose() {

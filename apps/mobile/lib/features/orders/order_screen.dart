@@ -14,11 +14,8 @@ import '../../widgets/common.dart';
 import 'report_payment_form.dart';
 
 class OrderScreen extends ConsumerWidget {
-  const OrderScreen({super.key, required this.id, this.now});
+  const OrderScreen({super.key, required this.id});
   final String id;
-
-  /// Para pruebas: reloj fijo.
-  final DateTime Function()? now;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -32,7 +29,7 @@ class OrderScreen extends ConsumerWidget {
       body: switch (order) {
         AsyncData(:final value) => RefreshIndicator(
           onRefresh: () => ref.refresh(orderProvider(id).future),
-          child: OrderView(order: value, now: now ?? DateTime.now),
+          child: OrderView(order: value),
         ),
         AsyncError(:final error) => ErrorView(
           error: error,
@@ -45,9 +42,8 @@ class OrderScreen extends ConsumerWidget {
 }
 
 class OrderView extends ConsumerStatefulWidget {
-  const OrderView({super.key, required this.order, required this.now});
+  const OrderView({super.key, required this.order});
   final Order order;
-  final DateTime Function() now;
 
   @override
   ConsumerState<OrderView> createState() => _OrderViewState();
@@ -95,7 +91,6 @@ class _OrderViewState extends ConsumerState<OrderView> {
               const SizedBox(height: 12),
               ReportPaymentForm(
                 order: widget.order,
-                now: widget.now,
                 onReported: () => Navigator.pop(sheet, true),
               ),
             ],
@@ -153,7 +148,7 @@ class _OrderViewState extends ConsumerState<OrderView> {
   Widget build(BuildContext context) {
     final o = widget.order;
     final text = Theme.of(context).textTheme;
-    final remaining = o.paymentDueAt.difference(widget.now());
+    final remaining = o.paymentDueAt.difference(ref.read(clockProvider)());
     final overdue = o.canReportPayment && remaining.isNegative;
     final lastRejected = o.payments
         .where((p) => p.status == PaymentStatus.rejected)

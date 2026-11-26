@@ -9,11 +9,8 @@ import '../../widgets/common.dart';
 import '../catalog/product_screen.dart';
 
 class AnimalScreen extends ConsumerWidget {
-  const AnimalScreen({super.key, required this.slug, this.now});
+  const AnimalScreen({super.key, required this.slug});
   final String slug;
-
-  /// Para pruebas: fecha con la que se calcula la edad.
-  final DateTime? now;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -23,7 +20,7 @@ class AnimalScreen extends ConsumerWidget {
       body: switch (animal) {
         AsyncData(:final value) => _AnimalView(
           animal: value,
-          now: now ?? DateTime.now(),
+          now: ref.read(clockProvider)(),
         ),
         AsyncError(:final error) => ErrorView(
           error: error,

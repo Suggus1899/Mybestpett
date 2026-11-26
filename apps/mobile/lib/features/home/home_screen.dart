@@ -61,9 +61,13 @@ class HomeScreen extends ConsumerWidget {
                   children: [
                     Icon(Icons.search, color: PetbfColors.slate),
                     SizedBox(width: 10),
-                    Text(
-                      'Busca alimento, juguetes, camas…',
-                      style: TextStyle(color: PetbfColors.slate),
+                    Expanded(
+                      child: Text(
+                        'Busca alimento, juguetes, camas…',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: PetbfColors.slate),
+                      ),
                     ),
                   ],
                 ),
@@ -101,7 +105,7 @@ class HomeScreen extends ConsumerWidget {
             const SectionTitle('¿Para quién compras?'),
             const SizedBox(height: 12),
             SizedBox(
-              height: 92,
+              height: 100,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 itemCount: Species.values.length,
@@ -123,6 +127,8 @@ class HomeScreen extends ConsumerWidget {
                           const SizedBox(height: 6),
                           Text(
                             s.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w700,

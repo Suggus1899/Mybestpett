@@ -85,7 +85,10 @@ class _AddressFormState extends ConsumerState<AddressForm> {
       final controller = ref.read(addressesProvider.notifier);
       final initial = widget.initial;
       if (initial == null) {
-        widget.onSaved?.call(await controller.create(input));
+        // Ojo: `onSaved?.call(await …)` no evaluaría el argumento si
+        // onSaved es null, y la dirección nunca se crearía.
+        final created = await controller.create(input);
+        widget.onSaved?.call(created);
       } else {
         await controller.edit(initial.id, input);
         widget.onSaved?.call(null);

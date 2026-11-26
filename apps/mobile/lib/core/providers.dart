@@ -8,6 +8,9 @@ import '../models/shop.dart';
 import 'api_client.dart';
 import 'petbf_api.dart';
 
+/// Reloj de la app; las pruebas lo fijan para controlar plazos y edades.
+final clockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
+
 /// Se reemplaza en main.dart (y en las pruebas) con el cliente real o uno falso.
 final apiClientProvider = Provider<ApiClient>(
   (ref) => throw UnimplementedError('apiClientProvider sin configurar'),
@@ -84,11 +87,13 @@ final sessionProvider = AsyncNotifierProvider<SessionController, User?>(
   SessionController.new,
 );
 
-/// true si hay sesión (también mientras se confirma sin conexión).
-final isSignedInProvider = Provider<bool>((ref) {
-  final session = ref.watch(sessionProvider);
-  return session.value != null || session.hasError;
-});
+/// true si hay sesión (también si no se pudo confirmar por falta de conexión).
+bool isSignedIn(AsyncValue<User?> session) =>
+    session.value != null || session.hasError;
+
+final isSignedInProvider = Provider<bool>(
+  (ref) => isSignedIn(ref.watch(sessionProvider)),
+);
 
 // ---------- Datos públicos ----------
 

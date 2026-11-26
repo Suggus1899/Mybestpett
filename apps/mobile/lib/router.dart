@@ -60,10 +60,12 @@ final routerProvider = Provider<GoRouter>((ref) {
     initialLocation: '/',
     refreshListenable: refresh,
     redirect: (context, state) {
+      // Se lee la sesión directamente: un provider derivado sin oyentes
+      // puede devolver un valor anterior dentro de este callback.
       final session = ref.read(sessionProvider);
       return redirectFor(
         state.uri,
-        signedIn: ref.read(isSignedInProvider),
+        signedIn: isSignedIn(session),
         loading: session.isLoading && !session.hasValue,
       );
     },
