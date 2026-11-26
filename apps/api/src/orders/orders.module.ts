@@ -5,13 +5,19 @@ import { RatesModule } from '../rates/rates.module.js';
 import {
   OrdersController,
   OrdersManageController,
+  ReturnsManageController,
 } from './orders.controller.js';
 import { OrdersService } from './orders.service.js';
 import { PaymentsService } from './payments.service.js';
+import { ReturnsService } from './returns.service.js';
 
 @Module({
   imports: [AddressesModule, CartModule, RatesModule],
-  controllers: [OrdersController, OrdersManageController],
-  providers: [OrdersService, PaymentsService],
+  controllers: [
+    OrdersController,
+    OrdersManageController,
+    ReturnsManageController,
+  ],
+  providers: [OrdersService, PaymentsService, ReturnsService],
 })
 export class OrdersModule {}

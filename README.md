@@ -242,7 +242,9 @@ docker build -f apps/api/Dockerfile -t petbf-api .   # la etapa `migrate` aplica
 ### Envíos y devoluciones
 
 - Envío **gratis desde 25 $**; por debajo se cobra una tarifa por zona.
-- Devoluciones en un máximo de **3 días** desde la entrega.
+- Devoluciones en un máximo de **3 días** desde la entrega. El cliente elige productos y unidades y explica el motivo; solo una devolución abierta por pedido.
+- El operador aprueba o rechaza (nadie gestiona su propio pedido). Solo el administrador registra el reembolso: por el mismo método, en la misma moneda y con las tasas congeladas del pedido, e indica si el producto vuelve al inventario.
+- El envío no se reembolsa. Si se devuelve todo el pedido, queda como reembolsado.
 - El alimento abierto y los productos de higiene abiertos no se devuelven.
 
 ### Animales vivos
@@ -284,7 +286,7 @@ Una persona puede tener varios roles a la vez.
 | **Auditoría** | Registro de quién hizo cada acción sensible | ✅ |
 | **Carrito y pedidos** | Checkout, pago reportado, verificación del equipo y despacho | 🚧 |
 | **Verificación en dos pasos** | Obligatoria para el equipo | 🚧 |
-| **Devoluciones** | Solicitud dentro de 3 días y reembolso registrado | ⏳ |
+| **Devoluciones** | Solicitud dentro de 3 días, revisión del operador y reembolso del administrador | ✅ |
 | **Reservas y adopciones** | Reserva con señal y solicitud de adopción con cuestionario | ⏳ |
 | **App móvil** | Flutter sobre la misma API: tienda, animales, carrito, checkout, pago y pedidos | 🚧 |
 

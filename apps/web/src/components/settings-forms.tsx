@@ -1,20 +1,11 @@
 'use client';
 
-import { startTransition, useActionState, type FormEvent } from 'react';
+import { useActionState } from 'react';
 import type { PaymentMethod, ShippingZone } from '@/lib/api';
 import { saveZoneAction, updatePaymentMethodAction, type ActionState } from '@/lib/shop-actions';
+import { keepValues } from '@/lib/keep-values';
 import { VE_STATES } from '@/lib/venezuela';
 import { Button, Field, inputClass, Notice } from './ui';
-
-// Envía el formulario sin que React lo vacíe al terminar: así, si la API
-// devuelve un error, lo escrito (incluidas las casillas) sigue ahí.
-function keepValues(action: (data: FormData) => void) {
-  return (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const data = new FormData(event.currentTarget);
-    startTransition(() => action(data));
-  };
-}
 
 const currencyLabel = { USD: 'dólares', VES: 'bolívares', EUR: 'euros', USDT: 'USDT' } as const;
 

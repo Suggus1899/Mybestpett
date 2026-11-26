@@ -239,3 +239,57 @@ export async function saveZoneAction(_prev: ActionState, formData: FormData): Pr
   revalidatePath('/admin/ajustes');
   return { ok: id ? 'Zona guardada' : 'Zona creada' };
 }
+
+// ---------- Devoluciones ----------
+
+export async function requestReturnAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const orderId = text(formData, 'orderId');
+  const reason = text(formData, 'reason');
+  const items: { orderItemId: string; quantity: number }[] = [];
+  for (const [key, value] of formData.entries()) {
+    if (!key.startsWith('qty-') || typeof value !== 'string' || value.trim() === '') continue;
+    const quantity = Number(value);
+    if (quantity !== 0) items.push({ orderItemId: key.slice(4), quantity });
+  }
+  if (items.length === 0) return { error: 'Elige al menos un producto para devolver.', fields: { reason } };
+  const result = await call('POST', `/orders/${encodeURIComponent(orderId)}/returns`, { reason, items }, `/pedidos/${orderId}`);
+  if (!result.ok) return { error: result.error, fields: { reason } };
+  revalidatePath(`/pedidos/${orderId}`);
+  return { ok: 'Recibimos tu solicitud. Te diremos si la aprobamos y cómo entregar el producto.' };
+}
+
+export async function approveReturnAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const id = text(formData, 'returnId');
+  const note = text(formData, 'note');
+  const result = await call('POST', `/manage/returns/${encodeURIComponent(id)}/approve`, note ? { note } : {}, '/admin/devoluciones');
+  if (!result.ok) return { error: result.error, fields: { note } };
+  revalidatePath('/admin', 'layout');
+  return { ok: 'Devolución aprobada' };
+}
+
+export async function rejectReturnAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const id = text(formData, 'returnId');
+  const reason = text(formData, 'reason');
+  const result = await call('POST', `/manage/returns/${encodeURIComponent(id)}/reject`, { reason }, '/admin/devoluciones');
+  if (!result.ok) return { error: result.error, fields: { reason } };
+  revalidatePath('/admin', 'layout');
+  return { ok: 'Devolución rechazada' };
+}
+
+export async function refundReturnAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const id = text(formData, 'returnId');
+  const reference = text(formData, 'reference');
+  const restock = text(formData, 'restock');
+  if (restock !== 'yes' && restock !== 'no') {
+    return { error: 'Indica si el producto vuelve al inventario.', fields: { reference } };
+  }
+  const result = await call(
+    'POST',
+    `/manage/returns/${encodeURIComponent(id)}/refund`,
+    { reference, restock: restock === 'yes' },
+    '/admin/devoluciones',
+  );
+  if (!result.ok) return { error: result.error, fields: { reference, restock } };
+  revalidatePath('/admin', 'layout');
+  return { ok: 'Reembolso registrado' };
+}

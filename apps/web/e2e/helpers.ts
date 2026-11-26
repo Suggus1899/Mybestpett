@@ -90,3 +90,16 @@ export async function retireTestProducts() {
     await post(`/manage/products/${id}`, { isActive: false }, await admin(), 'PATCH');
   }
 }
+
+// Lleva un pedido con pago reportado hasta entregado, como lo haría el equipo.
+export async function deliverOrder(orderId: string) {
+  const token = await admin();
+  const order = await fetch(`${API}/manage/orders/${orderId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  }).then((r) => r.json());
+  const payment = order.payments.find((p: { status: string }) => p.status === 'REPORTED');
+  await post(`/manage/payments/${payment.id}/verify`, undefined, token);
+  await post(`/manage/orders/${orderId}/status`, { status: 'PREPARING' }, token);
+  await post(`/manage/orders/${orderId}/status`, { status: 'SHIPPED', trackingCode: 'MRW-1' }, token);
+  await post(`/manage/orders/${orderId}/status`, { status: 'DELIVERED' }, token);
+}

@@ -4,7 +4,7 @@ import { notFound } from 'next/navigation';
 import { Suspense } from 'react';
 import { NoAccess } from '@/components/admin';
 import { AdvanceOrderForm, CancelOrderManageForm, ReviewPaymentForms } from '@/components/admin-forms';
-import { OrderHistory, OrderItems, OrderPayments, OrderShipping, StatusBadge } from '@/components/orders';
+import { OrderHistory, OrderItems, OrderPayments, OrderReturns, OrderShipping, StatusBadge } from '@/components/orders';
 import { api } from '@/lib/api';
 import { formatDateTime } from '@/lib/format';
 import { requireRoles } from '@/lib/guards';
@@ -63,6 +63,7 @@ async function OrderAdmin({ params }: { params: Promise<{ id: string }> }) {
         <div className="flex flex-col gap-6">
           <OrderShipping order={order} />
           <OrderPayments order={order} />
+          <OrderReturns order={order} />
           <OrderHistory order={order} />
           {canCancel && (
             <section aria-labelledby="cancelar" className="rounded-[var(--radius-card)] border border-line bg-white p-5">

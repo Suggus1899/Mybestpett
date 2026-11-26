@@ -28,6 +28,7 @@ import {
   orderCode,
   PAYMENT_WINDOW_MS,
   parseOrderCode,
+  RETURN_WINDOW_MS,
   shippingCost,
 } from './pricing.js';
 
@@ -55,6 +56,22 @@ const customerInclude = {
   history: {
     orderBy: { createdAt: 'asc' },
     select: { toStatus: true, note: true, createdAt: true },
+  },
+  returns: {
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true,
+      status: true,
+      reason: true,
+      refundUsdCents: true,
+      currency: true,
+      refundAmount: true,
+      decisionNote: true,
+      refundReference: true,
+      refundedAt: true,
+      createdAt: true,
+      items: { select: { orderItemId: true, quantity: true } },
+    },
   },
 } satisfies Prisma.OrderInclude;
 
@@ -88,6 +105,19 @@ const ADVANCE_FROM: Record<AdvanceOrderDto['status'], OrderStatus> = {
 
 export function withCode<T extends { number: number }>(order: T) {
   return { ...order, code: orderCode(order.number) };
+}
+
+// Pedido completo con su código y la fecha límite para pedir una devolución.
+function withDeadline<
+  T extends { number: number; status: OrderStatus; deliveredAt: Date | null },
+>(order: T) {
+  return {
+    ...withCode(order),
+    returnUntil:
+      order.status === 'DELIVERED' && order.deliveredAt
+        ? new Date(order.deliveredAt.getTime() + RETURN_WINDOW_MS)
+        : null,
+  };
 }
 
 @Injectable()
@@ -287,7 +317,7 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
       include: customerInclude,
     });
     if (!order) throw new NotFoundException('Pedido no encontrado');
-    return withCode(order);
+    return withDeadline(order);
   }
 
   // El cliente puede cancelar mientras no haya reportado el pago.
@@ -356,7 +386,7 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
       include: staffInclude,
     });
     if (!order) throw new NotFoundException('Pedido no encontrado');
-    return withCode(order);
+    return withDeadline(order);
   }
 
   async advance(actor: AuthUser, id: string, dto: AdvanceOrderDto) {

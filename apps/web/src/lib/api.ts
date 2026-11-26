@@ -245,6 +245,45 @@ export interface Order {
     changedBy?: { firstName: string; lastName: string } | null;
   }[];
   user?: { email: string; firstName: string; lastName: string; phone: string | null };
+  // Hasta cuándo se puede pedir una devolución; null si no aplica.
+  returnUntil: string | null;
+  returns: OrderReturn[];
+}
+
+export type ReturnStatus = 'REQUESTED' | 'APPROVED' | 'REJECTED' | 'REFUNDED';
+
+export interface OrderReturn {
+  id: string;
+  status: ReturnStatus;
+  reason: string;
+  refundUsdCents: number;
+  currency: Currency;
+  refundAmount: string;
+  decisionNote: string | null;
+  refundReference: string | null;
+  refundedAt: string | null;
+  createdAt: string;
+  items: { orderItemId: string; quantity: number }[];
+}
+
+export interface ReturnRow extends Omit<OrderReturn, 'items'> {
+  restocked: boolean;
+  decidedAt: string | null;
+  decidedBy: { firstName: string; lastName: string } | null;
+  refundedBy: { firstName: string; lastName: string } | null;
+  items: {
+    orderItemId: string;
+    quantity: number;
+    orderItem: { productName: string; variantName: string; sku: string; unitPriceUsdCents: number };
+  }[];
+  order: {
+    id: string;
+    code: string;
+    status: OrderStatus;
+    deliveredAt: string | null;
+    paymentMethod: { code: string; name: string };
+    user: { email: string; firstName: string; lastName: string };
+  };
 }
 
 export interface PaymentRow {
@@ -310,6 +349,7 @@ export const api = {
   manageOrders: (params: Params) => get<Page<OrderSummary>>(`/manage/orders${qs(params)}`, true),
   manageOrder: (id: string) => get<Order>(`/manage/orders/${encodeURIComponent(id)}`, true),
   managePayments: (params: Params) => get<Page<PaymentRow>>(`/manage/payments${qs(params)}`, true),
+  manageReturns: (params: Params) => get<Page<ReturnRow>>(`/manage/returns${qs(params)}`, true),
   manageZones: () => get<ShippingZone[]>('/manage/shipping-zones', true),
   managePaymentMethods: () => get<PaymentMethod[]>('/manage/payment-methods', true),
   // Compra: con la sesión del cliente.

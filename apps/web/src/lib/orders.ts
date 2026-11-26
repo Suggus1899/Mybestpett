@@ -1,4 +1,4 @@
-import type { Currency, OrderStatus, PaymentStatus } from './api';
+import type { Currency, Order, OrderStatus, PaymentStatus, ReturnStatus } from './api';
 
 // Textos del estado del pedido para el cliente y el equipo.
 export const orderStatusLabel: Record<OrderStatus, string> = {
@@ -28,6 +28,37 @@ export const paymentStatusLabel: Record<PaymentStatus, string> = {
   VERIFIED: 'Verificado',
   REJECTED: 'Rechazado',
 };
+
+export const returnStatusLabel: Record<ReturnStatus, string> = {
+  REQUESTED: 'En revisión',
+  APPROVED: 'Aprobada',
+  REJECTED: 'Rechazada',
+  REFUNDED: 'Reembolsada',
+};
+
+// Unidades de cada producto que aún se pueden devolver: las devolvibles menos
+// las que ya están en una devolución no rechazada.
+export function returnableLeft(order: Order) {
+  const taken = new Map<string, number>();
+  for (const r of order.returns) {
+    if (r.status === 'REJECTED') continue;
+    for (const line of r.items) taken.set(line.orderItemId, (taken.get(line.orderItemId) ?? 0) + line.quantity);
+  }
+  return order.items
+    .filter((item) => item.isReturnable)
+    .map((item) => ({ item, left: item.quantity - (taken.get(item.id) ?? 0) }))
+    .filter((line) => line.left > 0);
+}
+
+// Se puede pedir una devolución: dentro del plazo, sin otra abierta y con algo por devolver.
+export function canRequestReturn(order: Order, now = Date.now()) {
+  return (
+    order.returnUntil !== null &&
+    new Date(order.returnUntil).getTime() > now &&
+    !order.returns.some((r) => r.status === 'REQUESTED' || r.status === 'APPROVED') &&
+    returnableLeft(order).length > 0
+  );
+}
 
 export const ORDER_STATUSES = Object.keys(orderStatusLabel) as OrderStatus[];
 
