@@ -263,6 +263,8 @@ Solo se publican, en venta o en adopción, especies domésticas o de cría en ca
 
 La lista vive en `apps/api/src/animals/live-species.ts` y se publica en `GET /v1/animal-species`. Falta confirmarla con un abogado antes del lanzamiento.
 
+Por prudencia, los pitbulls (pit bull, American Pit Bull Terrier y variantes) no se ponen en venta mientras el abogado confirma la ley; en adopción sí se aceptan. Si la revisión legal lo permite, se quita `SALE_BLOCKED_BREEDS` en ese mismo archivo.
+
 ### Roles del equipo
 
 Una persona puede tener varios roles a la vez.

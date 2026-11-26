@@ -222,6 +222,45 @@ describe('Catálogo, animales y tasas (e2e)', () => {
       await api().get(`/v1/animals/${created.body.slug}`).expect(200);
     });
 
+    it('no pone en venta pitbulls (pendiente de revisión legal) pero sí en adopción', async () => {
+      const admin = await loginAs(app, prisma, ['ADMIN']);
+      const dog = {
+        ...adoption,
+        name: 'Rocky',
+        species: 'DOG',
+        breed: 'American Pit Bull Terrier',
+      };
+      const sale = await api()
+        .post('/v1/manage/animals')
+        .set('Authorization', `Bearer ${admin.token}`)
+        .send({ ...dog, listingType: 'SALE', priceUsdCents: 8000 })
+        .expect(400);
+      expect(sale.body.message).toMatch(/pendiente de revisión legal/);
+      const created = await api()
+        .post('/v1/manage/animals')
+        .set('Authorization', `Bearer ${admin.token}`)
+        .send(dog)
+        .expect(201);
+      // Un perro de venta no se cambia a la raza bloqueada al editarlo.
+      const labrador = await api()
+        .post('/v1/manage/animals')
+        .set('Authorization', `Bearer ${admin.token}`)
+        .send({
+          ...dog,
+          name: 'Toby',
+          breed: 'Labrador',
+          listingType: 'SALE',
+          priceUsdCents: 8000,
+        })
+        .expect(201);
+      await api()
+        .patch(`/v1/manage/animals/${labrador.body.id}`)
+        .set('Authorization', `Bearer ${admin.token}`)
+        .send({ breed: 'Pitbull' })
+        .expect(400);
+      expect(created.body.priceUsdCents).toBeNull();
+    });
+
     it('exige precio en venta y lo prohíbe en adopción', async () => {
       const admin = await loginAs(app, prisma, ['ADMIN']);
       await api()

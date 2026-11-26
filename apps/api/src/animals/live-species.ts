@@ -80,12 +80,25 @@ function normalize(text: string) {
     .trim();
 }
 
+// Razas de perro que no se ponen en venta mientras un abogado confirma la ley
+// (la interpretación llegó sin verificar: pitbulls). La adopción sí se acepta.
+// Cubre "pitbull", "pit bull", "American Pit Bull Terrier" y variantes.
+const SALE_BLOCKED_BREEDS = [/\bpit[\s-]?bull/];
+
 // Devuelve el motivo del rechazo, o null si la combinación es válida.
 // La raza puede detallar el tipo: "Periquito australiano arlequín" vale.
 export function liveSpeciesProblem(
   species: Species,
   breed: string | null | undefined,
+  listingType: 'SALE' | 'ADOPTION' = 'ADOPTION',
 ): string | null {
+  if (
+    listingType === 'SALE' &&
+    species === 'DOG' &&
+    SALE_BLOCKED_BREEDS.some((r) => r.test(normalize(breed ?? '')))
+  ) {
+    return 'Esta raza no se pone en venta por ahora (pendiente de revisión legal). Sí se acepta en adopción.';
+  }
   const rule = LIVE_SPECIES.find((r) => r.species === species);
   if (!rule || rule.allowed === 'none')
     return rule?.note ?? 'Especie no permitida';

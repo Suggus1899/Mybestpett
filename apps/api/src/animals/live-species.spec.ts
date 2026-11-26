@@ -40,3 +40,34 @@ describe('liveSpeciesProblem', () => {
     expect(liveSpeciesProblem('REPTILE', null)).toMatch(/fauna protegida/);
   });
 });
+
+describe('razas de perro bloqueadas en venta', () => {
+  const variants = [
+    'Pitbull',
+    'pit bull',
+    'American Pit Bull Terrier',
+    'Pit-bull azul',
+    'PITBULL mestizo',
+  ];
+
+  it('no se ponen en venta', () => {
+    for (const breed of variants) {
+      expect(liveSpeciesProblem('DOG', breed, 'SALE')).toMatch(
+        /pendiente de revisión legal/,
+      );
+    }
+  });
+
+  it('sí se aceptan en adopción', () => {
+    for (const breed of variants) {
+      expect(liveSpeciesProblem('DOG', breed, 'ADOPTION')).toBeNull();
+      expect(liveSpeciesProblem('DOG', breed)).toBeNull();
+    }
+  });
+
+  it('otras razas siguen en venta', () => {
+    for (const breed of ['Labrador', 'Bulldog francés', 'Pitufo', null]) {
+      expect(liveSpeciesProblem('DOG', breed, 'SALE')).toBeNull();
+    }
+  });
+});
