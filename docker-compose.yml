@@ -1,0 +1,18 @@
+# Base de datos local para desarrollo. No usar estas credenciales fuera de tu máquina.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: petbf
+      POSTGRES_PASSWORD: petbf
+      POSTGRES_DB: petbf
+    ports:
+      - "5432:5432"
+    volumes:
+      - petbf-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U petbf"]
+      interval: 5s
+      retries: 10
+volumes:
+  petbf-db:
