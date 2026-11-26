@@ -458,6 +458,7 @@ describe('Validaciones y permisos (e2e)', () => {
           name: 'Kiwi',
           listingType: 'SALE',
           species: 'BIRD',
+          breed: 'Periquito australiano',
           description: 'Periquito.',
           priceUsdCents: 2500,
         });
@@ -472,6 +473,62 @@ describe('Validaciones y permisos (e2e)', () => {
         .send({ status: 'UNAVAILABLE' })
         .expect(200);
       await api().get(`/v1/animals/${body.slug}`).expect(404);
+    });
+
+    it('solo acepta especies domésticas y no fauna protegida', async () => {
+      const admin = await loginAs(app, prisma, ['ADMIN']);
+      const bird = {
+        name: 'Paco',
+        listingType: 'SALE',
+        species: 'BIRD',
+        description: 'Ave.',
+        priceUsdCents: 3000,
+      };
+      const create = (extra: object) =>
+        api()
+          .post('/v1/manage/animals')
+          .set(auth(admin.token))
+          .send({ ...bird, ...extra });
+
+      const wild = await create({ breed: 'Guacamaya' }).expect(400);
+      expect(wild.body.message).toMatch(/fauna protegida/);
+      await create({}).expect(400); // ave sin tipo
+      await create({ species: 'REPTILE', breed: 'Morrocoy' }).expect(400);
+      await create({ species: 'RODENT', breed: 'Chigüire' }).expect(400);
+      await create({ species: 'OTHER', breed: 'Mono' }).expect(400);
+
+      const { body } = await create({ breed: 'canario belga' }).expect(201);
+      // Al editar se valida la combinación con lo ya guardado.
+      await api()
+        .patch(`/v1/manage/animals/${body.id}`)
+        .set(auth(admin.token))
+        .send({ breed: 'Turpial' })
+        .expect(400);
+      await api()
+        .patch(`/v1/manage/animals/${body.id}`)
+        .set(auth(admin.token))
+        .send({ species: 'RODENT' })
+        .expect(400);
+      await api()
+        .patch(`/v1/manage/animals/${body.id}`)
+        .set(auth(admin.token))
+        .send({ species: 'RODENT', breed: 'Hámster' })
+        .expect(200);
+      // Editar otros campos no exige volver a validar la especie.
+      await api()
+        .patch(`/v1/manage/animals/${body.id}`)
+        .set(auth(admin.token))
+        .send({ name: 'Paco II' })
+        .expect(200);
+    });
+
+    it('publica la lista de especies aceptadas', async () => {
+      const { body } = await api().get('/v1/animal-species').expect(200);
+      const bird = body.find((r: { species: string }) => r.species === 'BIRD');
+      expect(bird.kinds).toContain('Canario');
+      expect(
+        body.find((r: { species: string }) => r.species === 'REPTILE').allowed,
+      ).toBe('none');
     });
   });
 
