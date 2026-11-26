@@ -245,6 +245,20 @@ docker build -f apps/api/Dockerfile -t petbf-api .   # la etapa `migrate` aplica
 - Devoluciones en un máximo de **3 días** desde la entrega.
 - El alimento abierto y los productos de higiene abiertos no se devuelven.
 
+### Animales vivos
+
+Solo se publican, en venta o en adopción, especies domésticas o de cría en cautiverio habituales en Venezuela. La fauna silvestre autóctona está protegida y su comercio exige permisos, así que la API la rechaza.
+
+| Especie | Se acepta |
+|---------|-----------|
+| Perros, gatos, peces ornamentales | Cualquier raza |
+| Aves | Periquito australiano, canario, cacatúa ninfa, agapornis, diamante mandarín |
+| Roedores | Hámster, cobayo, jerbo, chinchilla, rata y ratón domésticos |
+| Otros | Conejo |
+| Reptiles | Ninguno (morrocoyes, iguanas y babas son fauna protegida) |
+
+La lista vive en `apps/api/src/animals/live-species.ts` y se publica en `GET /v1/animal-species`. Falta confirmarla con un abogado antes del lanzamiento.
+
 ### Roles del equipo
 
 Una persona puede tener varios roles a la vez.

@@ -199,6 +199,7 @@ async function seedDemo() {
       name: 'Periquito azul',
       listingType: 'SALE',
       species: 'BIRD',
+      breed: 'Periquito australiano',
       description: 'Periquito joven. Ejemplo para desarrollo.',
       priceUsdCents: 2500,
     },

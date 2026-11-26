@@ -20,6 +20,7 @@ import {
   type UpdateAnimalDto,
 } from './animals.schemas.js';
 import { AnimalsService } from './animals.service.js';
+import { LIVE_SPECIES } from './live-species.js';
 
 @Controller()
 export class AnimalsController {
@@ -29,6 +30,13 @@ export class AnimalsController {
   @Get('animals')
   list(@Query({ schema: listAnimalsSchema }) query: ListAnimalsQuery) {
     return this.animals.list(query);
+  }
+
+  // Qué especies y tipos se aceptan, para los formularios del panel y la app.
+  @Public()
+  @Get('animal-species')
+  species() {
+    return LIVE_SPECIES;
   }
 
   @Public()

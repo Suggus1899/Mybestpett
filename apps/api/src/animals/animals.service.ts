@@ -13,6 +13,7 @@ import type {
   AnimalListingType,
   Prisma,
   Role,
+  Species,
 } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type {
@@ -20,6 +21,7 @@ import type {
   ListAnimalsQuery,
   UpdateAnimalDto,
 } from './animals.schemas.js';
+import { liveSpeciesProblem } from './live-species.js';
 
 // Quién puede gestionar cada tipo de publicación (ADMIN siempre puede).
 const rolesFor: Record<AnimalListingType, Role[]> = {
@@ -30,6 +32,12 @@ const rolesFor: Record<AnimalListingType, Role[]> = {
 const include = {
   images: { orderBy: { sortOrder: 'asc' }, select: { url: true, alt: true } },
 } satisfies Prisma.AnimalInclude;
+
+// Solo especies domésticas: la fauna silvestre protegida no se publica.
+function assertLiveSpecies(species: Species, breed: string | null | undefined) {
+  const problem = liveSpeciesProblem(species, breed);
+  if (problem) throw new BadRequestException(problem);
+}
 
 @Injectable()
 export class AnimalsService {
@@ -70,6 +78,7 @@ export class AnimalsService {
 
   async create(actor: AuthUser, dto: CreateAnimalDto) {
     this.assertCanManage(actor, dto.listingType);
+    assertLiveSpecies(dto.species, dto.breed);
     const { images, ...fields } = dto;
     return this.prisma.$transaction(async (tx) => {
       const animal = await tx.animal.create({
@@ -105,6 +114,12 @@ export class AnimalsService {
       const before = await tx.animal.findUnique({ where: { id } });
       if (!before) throw new NotFoundException('Animal no encontrado');
       this.assertCanManage(actor, before.listingType);
+      if (dto.species !== undefined || dto.breed !== undefined) {
+        assertLiveSpecies(
+          dto.species ?? before.species,
+          dto.breed === undefined ? before.breed : dto.breed,
+        );
+      }
 
       const price =
         dto.priceUsdCents === undefined
