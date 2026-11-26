@@ -1,19 +1,27 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
+import { isStaff } from '@/lib/guards';
 import { getCurrentUser } from '@/lib/session';
 
 const nav = [
-  { href: '/#productos', label: 'Productos' },
-  { href: '/#animales', label: 'Animales' },
-  { href: '/#adopcion', label: 'Adopción' },
+  { href: '/productos', label: 'Productos' },
+  { href: '/animales?tipo=venta', label: 'Animales' },
+  { href: '/animales?tipo=adopcion', label: 'Adopción' },
 ];
 
 async function AccountLink() {
   const user = await getCurrentUser();
   return user ? (
-    <Link href="/cuenta" className="font-bold hover:underline">
-      Hola, {user.firstName}
-    </Link>
+    <span className="flex gap-4">
+      {isStaff(user) && (
+        <Link href="/admin" className="font-bold hover:underline">
+          Panel
+        </Link>
+      )}
+      <Link href="/cuenta" className="font-bold hover:underline">
+        Hola, {user.firstName}
+      </Link>
+    </span>
   ) : (
     <Link href="/entrar" className="font-bold hover:underline">
       Entrar

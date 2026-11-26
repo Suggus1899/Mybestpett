@@ -1,6 +1,7 @@
+import Link from 'next/link';
 import { ButtonLink } from '@/components/ui';
 
-// Datos de muestra hasta que existan los endpoints de catálogo.
+// Categorías base (las mismas del seed). La portada no depende de la API.
 const categories = [
   { slug: 'perros', name: 'Perros' },
   { slug: 'gatos', name: 'Gatos' },
@@ -23,8 +24,8 @@ export default function Home() {
             Paga en bolívares, dólares o USDT.
           </p>
           <div className="flex flex-wrap gap-3">
-            <ButtonLink href="/#productos">Ver productos</ButtonLink>
-            <ButtonLink href="/#adopcion" variant="secondary">
+            <ButtonLink href="/productos">Ver productos</ButtonLink>
+            <ButtonLink href="/animales?tipo=adopcion" variant="secondary">
               Adoptar
             </ButtonLink>
           </div>
@@ -37,14 +38,17 @@ export default function Home() {
         </p>
       </div>
 
-      <section id="productos" className="mx-auto max-w-6xl scroll-mt-4 px-4 py-12">
+      <section className="mx-auto max-w-6xl px-4 py-12">
         <h2 className="mb-6 text-3xl">Compra por mascota</h2>
         <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
           {categories.map((category) => (
             <li key={category.slug}>
-              <div className="flex min-h-24 items-center justify-center rounded-[var(--radius-card)] border border-line bg-white p-4 text-center font-bold">
+              <Link
+                href={`/productos?categoria=${category.slug}`}
+                className="flex min-h-24 items-center justify-center rounded-[var(--radius-card)] border border-line bg-white p-4 text-center font-bold hover:border-petbf"
+              >
                 {category.name}
-              </div>
+              </Link>
             </li>
           ))}
         </ul>
@@ -52,22 +56,22 @@ export default function Home() {
 
       <section className="mx-auto grid max-w-6xl gap-4 px-4 pb-16 md:grid-cols-2">
         <article
-          id="animales"
-          className="scroll-mt-4 rounded-[var(--radius-card)] border border-line bg-white p-6"
+          className="rounded-[var(--radius-card)] border border-line bg-white p-6"
         >
           <h2 className="mb-2 text-2xl">Animales en venta</h2>
-          <p className="text-slate">
-            Cachorros, aves y peces con su ficha de salud. Muy pronto aquí.
-          </p>
+          <p className="mb-3 text-slate">Cachorros, aves y peces con su ficha de salud.</p>
+          <Link href="/animales?tipo=venta" className="font-bold text-petbf hover:underline">
+            Ver animales en venta
+          </Link>
         </article>
         <article
-          id="adopcion"
-          className="scroll-mt-4 rounded-[var(--radius-card)] border border-line bg-white p-6"
+          className="rounded-[var(--radius-card)] border border-line bg-white p-6"
         >
           <h2 className="mb-2 text-2xl">Adopción</h2>
-          <p className="text-slate">
-            Dale un hogar a quien lo necesita. Las solicitudes llegan pronto.
-          </p>
+          <p className="mb-3 text-slate">Dale un hogar a quien lo necesita.</p>
+          <Link href="/animales?tipo=adopcion" className="font-bold text-petbf hover:underline">
+            Conocer a quienes buscan hogar
+          </Link>
         </article>
       </section>
     </>
