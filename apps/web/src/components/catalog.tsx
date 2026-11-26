@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import type { Image, ProductCard as Card } from '@/lib/api';
+import type { Image, ProductCard as Card, Rating } from '@/lib/api';
 import { formatBs, formatUsd } from '@/lib/format';
 
 // Precio principal en dólares y su equivalente en bolívares a tasa BCV.
@@ -53,6 +53,25 @@ export function OfferBadge() {
   );
 }
 
+const decimal = new Intl.NumberFormat('es-VE', { maximumFractionDigits: 1 });
+
+// Valoración media con su número de reseñas. Sin reseñas no muestra nada.
+export function Stars({ rating, size = 'sm' }: { rating: Rating; size?: 'sm' | 'lg' }) {
+  if (rating.average === null || rating.count === 0) return null;
+  const label = `${decimal.format(rating.average)} de 5 estrellas, ${rating.count} ${rating.count === 1 ? 'reseña' : 'reseñas'}`;
+  return (
+    <p className={size === 'lg' ? 'text-base' : 'text-sm'} aria-label={label} title={label}>
+      <span aria-hidden="true" className="text-amber">
+        {'★'.repeat(Math.round(rating.average))}
+        <span className="text-line">{'★'.repeat(5 - Math.round(rating.average))}</span>
+      </span>{' '}
+      <span aria-hidden="true" className="text-slate">
+        {decimal.format(rating.average)} ({rating.count})
+      </span>
+    </p>
+  );
+}
+
 export function ProductCard({ product, rate }: { product: Card; rate: string | null }) {
   return (
     <article className="flex h-full flex-col overflow-hidden rounded-[var(--radius-card)] border border-line bg-white">
@@ -71,6 +90,7 @@ export function ProductCard({ product, rate }: { product: Card; rate: string | n
             {product.name}
           </Link>
         </h3>
+        <Stars rating={product.rating} />
         <div className="mt-auto">
           {product.priceFromUsdCents != null && (
             <Price

@@ -143,3 +143,42 @@ export function totp(secret: string, offset = 0) {
   const at = hmac[hmac.length - 1] & 0x0f;
   return String((hmac.readUInt32BE(at) & 0x7fffffff) % 1_000_000).padStart(6, '0');
 }
+
+// Compra un producto propio con Zelle y deja la pantalla del pedido abierta.
+export async function checkout(page: Page, priceUsdCents: number) {
+  const product = await createProduct(priceUsdCents);
+  await open(page, `/productos/${product.slug}`);
+  await page.getByRole('button', { name: `Añadir ${product.name} Unidad al carrito` }).click();
+  await expect(page.getByRole('status').filter({ hasText: 'Añadido al carrito' })).toBeVisible();
+  await open(page, '/checkout');
+  if (await page.getByRole('button', { name: 'Guardar dirección' }).isVisible()) {
+    await page.getByLabel('Quién recibe', { exact: true }).fill('Ana Pérez');
+    await page.getByLabel('Teléfono de contacto', { exact: true }).fill('0412-1234567');
+    await page.getByLabel('Ciudad', { exact: true }).fill('Caracas');
+    await page.getByLabel('Dirección', { exact: true }).fill('Av. Urdaneta');
+    await page.getByLabel('Estado').selectOption('Distrito Capital');
+    await page.getByRole('button', { name: 'Guardar dirección' }).click();
+    await expect(page.getByRole('group', { name: 'Dirección de envío' })).toBeVisible();
+  }
+  await page.getByRole('radio', { name: 'Zelle' }).check();
+  await page.getByLabel(/Acepto los términos/).check();
+  await page.getByRole('button', { name: 'Confirmar pedido' }).click();
+  await page.waitForURL(/\/pedidos\/[0-9a-f-]{36}$/);
+  await ready(page);
+  return product;
+}
+
+// Pedido propio ya entregado, con la pantalla del pedido abierta.
+export async function deliveredOrder(page: Page) {
+  const product = await checkout(page, 1500);
+  const url = page.url();
+  const code = (await page.getByRole('heading', { level: 1 }).textContent())!.replace('Pedido ', '').trim();
+  await page.getByLabel('Número de referencia').fill(`DEV-${Date.now()}`);
+  const now = new Date(Date.now() - 4 * 60 * 60 * 1000 - 60_000).toISOString().slice(0, 16);
+  await page.getByLabel('Fecha y hora del pago').fill(now);
+  await page.getByRole('button', { name: 'Reportar pago' }).click();
+  await expect(page.getByText('Estamos verificando tu pago con el banco.')).toBeVisible();
+  await deliverOrder(url.split('/').pop()!);
+  await open(page, url);
+  return { url, code, product };
+}

@@ -271,7 +271,7 @@ Una persona puede tener varios roles a la vez.
 | `CUSTOMER` | Cliente registrado; comprar exige cuenta |
 | `ADMIN` | Acceso total: cuentas, roles y tasas |
 | `ORDERS_OPERATOR` | Verifica pagos, prepara y despacha pedidos |
-| `CATALOG_MANAGER` | Productos, precios, stock y animales en venta |
+| `CATALOG_MANAGER` | Productos, precios, stock, animales en venta y moderación de reseñas |
 | `ADOPTION_COORDINATOR` | Fichas de adopción y solicitudes |
 
 ## 🛍️ Funcionalidades
@@ -289,6 +289,8 @@ Una persona puede tener varios roles a la vez.
 | **Verificación en dos pasos** | TOTP obligatoria para el equipo en el panel, con códigos de recuperación y restablecimiento por el administrador | ✅ |
 | **Devoluciones** | Solicitud dentro de 3 días, revisión del operador y reembolso del administrador | ✅ |
 | **Correos al cliente** | Aviso de pedido creado, pago confirmado o rechazado, envío, entrega, cancelación y devoluciones, con bandeja de salida y reintentos | ✅ |
+| **Reseñas y valoraciones** | Solo de compras entregadas, con promedio y distribución por estrellas; el equipo de catálogo las oculta con motivo | ✅ |
+| **Recomendaciones** | "También te puede gustar": productos comprados juntos y los más vendidos de la categoría | ✅ |
 | **Reservas y adopciones** | Reserva con señal y solicitud de adopción con cuestionario | ⏳ |
 | **App móvil** | Flutter sobre la misma API: tienda, animales, carrito, checkout, pago y pedidos | 🚧 |
 
