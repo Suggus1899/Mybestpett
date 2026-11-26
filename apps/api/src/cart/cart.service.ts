@@ -30,11 +30,13 @@ const itemInclude = {
 } satisfies Prisma.CartItemInclude;
 
 type Row = Prisma.CartItemGetPayload<{ include: typeof itemInclude }>;
+// Lo necesario para comprar una presentación: del carrito o de una suscripción.
+export type CartLine = Pick<Row, 'variantId' | 'quantity' | 'variant'>;
 
 // Por qué una línea no se puede comprar tal como está.
 export type CartIssue = 'unavailable' | 'insufficient_stock' | null;
 
-export function lineIssue(row: Row): CartIssue {
+export function lineIssue(row: CartLine): CartIssue {
   const { variant } = row;
   if (!variant.isActive || !variant.product.isActive || variant.stock === 0) {
     return 'unavailable';
@@ -201,6 +203,19 @@ export class CartService {
   async clear(userId: string) {
     await this.prisma.cartItem.deleteMany({ where: { userId } });
     return this.get(userId);
+  }
+
+  // Una línea suelta con la misma forma que las del carrito.
+  async line(
+    db: Prisma.TransactionClient | PrismaService,
+    variantId: string,
+    quantity: number,
+  ): Promise<CartLine | null> {
+    const variant = await db.productVariant.findUnique({
+      where: { id: variantId },
+      include: itemInclude.variant.include,
+    });
+    return variant ? { variantId, quantity, variant } : null;
   }
 
   rows(db: Prisma.TransactionClient | PrismaService, userId: string) {
