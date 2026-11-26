@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -11,6 +12,18 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import type { ListPaymentsQuery, ReportPaymentDto } from './orders.schemas.js';
 import { OrdersService, withCode } from './orders.service.js';
 import { PAYMENT_WINDOW_MS } from './pricing.js';
+import {
+  MAX_PROOF_BYTES,
+  proofFileName,
+  sha256,
+  sniffProofType,
+} from './proofs.js';
+
+const proofMeta = {
+  contentType: true,
+  sizeBytes: true,
+  createdAt: true,
+} as const;
 
 // Margen para relojes desfasados entre el teléfono del cliente y el servidor.
 const CLOCK_SKEW_MS = 10 * 60 * 1000;
@@ -79,6 +92,87 @@ export class PaymentsService {
     return this.orders.getMine(user.id, orderId);
   }
 
+  // El cliente adjunta (o reemplaza) el comprobante mientras el pago espera revisión.
+  async attachProof(
+    user: AuthUser,
+    orderId: string,
+    paymentId: string,
+    file: { buffer: Buffer; size: number } | undefined,
+  ) {
+    if (!file || file.size === 0) {
+      throw new BadRequestException(
+        'Adjunta el comprobante en el campo "file"',
+      );
+    }
+    if (file.size > MAX_PROOF_BYTES) {
+      throw new BadRequestException('El comprobante pesa más de 5 MB');
+    }
+    const contentType = sniffProofType(file.buffer);
+    if (!contentType) {
+      throw new BadRequestException(
+        'El comprobante debe ser una imagen JPG, PNG o WebP, o un PDF',
+      );
+    }
+    const payment = await this.customerPayment(user, orderId, paymentId);
+    if (payment.status !== 'REPORTED') {
+      throw new ConflictException(
+        'Este pago ya fue revisado: no admite comprobante',
+      );
+    }
+    const data = {
+      contentType,
+      sizeBytes: file.size,
+      sha256: sha256(file.buffer),
+      data: new Uint8Array(file.buffer),
+    };
+    return this.prisma.paymentProof.upsert({
+      where: { paymentId },
+      create: { paymentId, ...data },
+      update: { ...data, createdAt: new Date() },
+      select: proofMeta,
+    });
+  }
+
+  async customerProof(user: AuthUser, orderId: string, paymentId: string) {
+    const payment = await this.customerPayment(user, orderId, paymentId);
+    return this.proofFile(payment.id, payment.reference);
+  }
+
+  async staffProof(paymentId: string) {
+    const payment = await this.prisma.payment.findUnique({
+      where: { id: paymentId },
+      select: { id: true, reference: true },
+    });
+    if (!payment) throw new NotFoundException('Pago no encontrado');
+    return this.proofFile(payment.id, payment.reference);
+  }
+
+  private async proofFile(paymentId: string, reference: string) {
+    const proof = await this.prisma.paymentProof.findUnique({
+      where: { paymentId },
+    });
+    if (!proof) throw new NotFoundException('Este pago no tiene comprobante');
+    return {
+      data: Buffer.from(proof.data),
+      contentType: proof.contentType,
+      fileName: proofFileName(reference, proof.contentType),
+    };
+  }
+
+  // El pago de otro cliente, o de otro pedido, responde 404 como uno inexistente.
+  private async customerPayment(
+    user: AuthUser,
+    orderId: string,
+    paymentId: string,
+  ) {
+    const payment = await this.prisma.payment.findFirst({
+      where: { id: paymentId, orderId, order: { userId: user.id } },
+      select: { id: true, reference: true, status: true },
+    });
+    if (!payment) throw new NotFoundException('Pago no encontrado');
+    return payment;
+  }
+
   // Cola del equipo. Por defecto, los reportados, del más antiguo al más nuevo.
   async list(query: ListPaymentsQuery) {
     const where = { status: query.status };
@@ -89,6 +183,7 @@ export class PaymentsService {
         ...paginate(query.page, query.pageSize),
         include: {
           method: { select: { code: true, name: true } },
+          proof: { select: proofMeta },
           order: {
             select: {
               id: true,

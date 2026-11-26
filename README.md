@@ -238,6 +238,7 @@ docker build -f apps/api/Dockerfile -t petbf-api .   # la etapa `migrate` aplica
 - Los pagos se reportan y el equipo los verifica contra el banco, Zelle o la billetera.
 - El cliente tiene **2 horas** para reportar el pago; si no, el pedido se cancela y el stock vuelve.
 - Una referencia de pago no puede pagar dos pedidos.
+- El cliente puede adjuntar un comprobante (JPG, PNG, WebP o PDF, hasta 5 MB) mientras el pago espera revisión. El tipo se detecta por el contenido, se guarda en la base y solo lo ven el cliente y el equipo de pagos. Es una pista: lo que cuenta es el movimiento en el banco.
 
 ### Envíos y devoluciones
 

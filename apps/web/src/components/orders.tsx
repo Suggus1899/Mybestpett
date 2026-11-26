@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { Order, OrderStatus } from '@/lib/api';
+import { AttachProofForm } from './shop-forms';
 import { formatDateTime, formatMoney, formatUsd } from '@/lib/format';
 import { orderStatusClass, orderStatusLabel, paymentStatusLabel, returnStatusLabel } from '@/lib/orders';
 
@@ -78,7 +79,9 @@ export function OrderShipping({ order }: { order: Order }) {
   );
 }
 
-export function OrderPayments({ order }: { order: Order }) {
+// El cliente ve su comprobante y puede adjuntarlo mientras el pago espera; el
+// equipo lo abre desde el panel.
+export function OrderPayments({ order, viewer }: { order: Order; viewer: 'customer' | 'staff' }) {
   if (order.payments.length === 0) return null;
   return (
     <section aria-labelledby="pagos" className="rounded-[var(--radius-card)] border border-line bg-white p-5">
@@ -97,6 +100,21 @@ export function OrderPayments({ order }: { order: Order }) {
               {paymentStatusLabel[p.status]}
               {p.rejectionReason && `: ${p.rejectionReason}`}
             </p>
+            {p.proof ? (
+              <a
+                href={viewer === 'customer' ? `/pedidos/${order.id}/comprobante/${p.id}` : `/admin/pagos/${p.id}/comprobante`}
+                target="_blank"
+                rel="noopener"
+                className="text-sm font-bold text-petbf hover:underline"
+              >
+                Ver comprobante
+              </a>
+            ) : (
+              <p className="text-sm text-slate">Sin comprobante</p>
+            )}
+            {viewer === 'customer' && p.status === 'REPORTED' && (
+              <AttachProofForm orderId={order.id} paymentId={p.id} hasProof={Boolean(p.proof)} />
+            )}
           </li>
         ))}
       </ul>

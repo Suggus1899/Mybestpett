@@ -27,6 +27,7 @@ function safePath(value: string, fallback: string) {
 
 async function message(res: Response): Promise<string> {
   if (res.status === 429) return 'Demasiadas peticiones. Espera un minuto.';
+  if (res.status === 413) return 'El comprobante pesa más de 5 MB.';
   if (res.status === 403) return 'No tienes permiso para hacer esto.';
   try {
     const body = await res.json();
@@ -52,10 +53,11 @@ async function call<T>(
       method,
       headers: {
         ...forwardHeaders(await headers()),
-        'Content-Type': 'application/json',
+        // Con FormData, fetch pone el multipart con su separador.
+        ...(!(body instanceof FormData) && { 'Content-Type': 'application/json' }),
         Authorization: `Bearer ${token}`,
       },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined || body instanceof FormData ? body : JSON.stringify(body),
       cache: 'no-store',
     });
   } catch {
@@ -126,6 +128,34 @@ function caracasIso(local: string) {
   return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(local) ? `${local}:00-04:00` : local;
 }
 
+const MAX_PROOF_BYTES = 5 * 1024 * 1024; // igual que la API
+const PROOF_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+
+// Archivo elegido en el formulario, o null si no se eligió ninguno.
+function proofFile(formData: FormData): File | null {
+  const file = formData.get('proof');
+  return file instanceof File && file.size > 0 ? file : null;
+}
+
+// Revisión previa para avisar antes de enviar. La API vuelve a validar el
+// contenido real del archivo, que es lo que cuenta.
+function proofProblem(file: File): string | null {
+  if (file.size > MAX_PROOF_BYTES) return 'El comprobante pesa más de 5 MB.';
+  if (!PROOF_TYPES.includes(file.type)) return 'El comprobante debe ser una imagen JPG, PNG o WebP, o un PDF.';
+  return null;
+}
+
+function uploadProof(orderId: string, paymentId: string, file: File) {
+  const body = new FormData();
+  body.set('file', file);
+  return call(
+    'PUT',
+    `/orders/${encodeURIComponent(orderId)}/payments/${encodeURIComponent(paymentId)}/proof`,
+    body,
+    `/pedidos/${orderId}`,
+  );
+}
+
 export async function reportPaymentAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const orderId = text(formData, 'orderId');
   const fields = {
@@ -134,14 +164,36 @@ export async function reportPaymentAction(_prev: ActionState, formData: FormData
     amount: text(formData, 'amount').replace(',', '.'),
     paidAt: text(formData, 'paidAt'),
   };
-  const result = await call('POST', `/orders/${encodeURIComponent(orderId)}/payments`, {
+  const file = proofFile(formData);
+  const problem = file && proofProblem(file);
+  if (problem) return { error: problem, fields };
+  const result = await call<{ payments: { id: string; status: string }[] }>('POST', `/orders/${encodeURIComponent(orderId)}/payments`, {
     ...fields,
     originBank: fields.originBank || undefined,
     paidAt: caracasIso(fields.paidAt),
   }, `/pedidos/${orderId}`);
   if (!result.ok) return { error: result.error, fields };
   revalidatePath(`/pedidos/${orderId}`);
+  const payment = result.data.payments.find((p) => p.status === 'REPORTED');
+  if (file && payment) {
+    const uploaded = await uploadProof(orderId, payment.id, file);
+    // El reporte ya quedó hecho: el comprobante se puede adjuntar después.
+    if (!uploaded.ok) return { error: `Recibimos tu reporte, pero no el comprobante: ${uploaded.error} Puedes adjuntarlo de nuevo.` };
+  }
   return { ok: 'Recibimos tu reporte. Te avisaremos cuando lo verifiquemos.' };
+}
+
+export async function attachProofAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const orderId = text(formData, 'orderId');
+  const paymentId = text(formData, 'paymentId');
+  const file = proofFile(formData);
+  if (!file) return { error: 'Elige el archivo del comprobante.' };
+  const problem = proofProblem(file);
+  if (problem) return { error: problem };
+  const result = await uploadProof(orderId, paymentId, file);
+  if (!result.ok) return { error: result.error };
+  revalidatePath(`/pedidos/${orderId}`);
+  return { ok: 'Comprobante guardado' };
 }
 
 export async function cancelMyOrderAction(_prev: ActionState, formData: FormData): Promise<ActionState> {

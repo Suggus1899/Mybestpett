@@ -6,6 +6,7 @@ import { formatMoney, formatUsd } from '@/lib/format';
 import { estimateCharge } from '@/lib/orders';
 import {
   addToCartAction,
+  attachProofAction,
   cancelMyOrderAction,
   checkoutAction,
   createAddressAction,
@@ -293,9 +294,42 @@ export function ReportPaymentForm({ orderId, amount }: { orderId: string; amount
           hint="Con punto o coma y hasta 2 decimales."
         />
         <Field label="Fecha y hora del pago" id="paidAt" name="paidAt" type="datetime-local" required defaultValue={f?.paidAt} />
+        <ProofInput id="proof" />
       </div>
       <Button type="submit" disabled={pending} className="self-start">
         {pending ? 'Enviando…' : 'Reportar pago'}
+      </Button>
+    </form>
+  );
+}
+
+const PROOF_ACCEPT = 'image/jpeg,image/png,image/webp,application/pdf';
+
+function ProofInput({ id, required }: { id: string; required?: boolean }) {
+  return (
+    <div className="flex flex-col gap-1.5 sm:col-span-2">
+      <label htmlFor={id} className="font-bold">
+        Comprobante{required ? '' : ' (opcional)'}
+      </label>
+      <input id={id} name="proof" type="file" accept={PROOF_ACCEPT} required={required} aria-describedby={`${id}-hint`} />
+      <p id={`${id}-hint`} className="text-sm text-slate">
+        Captura o PDF del pago, hasta 5 MB. Ayuda a verificarlo más rápido.
+      </p>
+    </div>
+  );
+}
+
+// Adjunta o reemplaza el comprobante de un pago que el equipo aún no revisó.
+export function AttachProofForm({ orderId, paymentId, hasProof }: { orderId: string; paymentId: string; hasProof: boolean }) {
+  const [state, action, pending] = useActionState<ActionState, FormData>(attachProofAction, {});
+  return (
+    <form action={action} aria-label="Adjuntar comprobante" className="mt-2 flex flex-col gap-2">
+      <Notice error={state.error} ok={state.ok} />
+      <input type="hidden" name="orderId" value={orderId} />
+      <input type="hidden" name="paymentId" value={paymentId} />
+      <ProofInput id={`proof-${paymentId}`} required />
+      <Button type="submit" variant="secondary" disabled={pending} className="self-start">
+        {pending ? 'Subiendo…' : hasProof ? 'Reemplazar comprobante' : 'Adjuntar comprobante'}
       </Button>
     </form>
   );

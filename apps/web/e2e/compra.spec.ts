@@ -1,10 +1,13 @@
 import { expect, test, type Page } from '@playwright/test';
-import { createProduct, createUser, login, open, ready, retireTestProducts } from './helpers';
+import { createProduct, createUser, login, open, ready, retireTestProducts, settleTestPayments } from './helpers';
 
 // Flujo de compra en el navegador: carrito, checkout, pago reportado,
 // verificación del equipo y despacho. Cada prueba usa su propio producto.
 
-test.afterAll(retireTestProducts);
+test.afterAll(async () => {
+  await settleTestPayments();
+  await retireTestProducts();
+});
 
 const address = {
   'Quién recibe': 'Ana Pérez',

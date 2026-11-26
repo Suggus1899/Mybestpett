@@ -62,7 +62,7 @@ async function OrderAdmin({ params }: { params: Promise<{ id: string }> }) {
         <OrderItems order={order} />
         <div className="flex flex-col gap-6">
           <OrderShipping order={order} />
-          <OrderPayments order={order} />
+          <OrderPayments order={order} viewer="staff" />
           <OrderReturns order={order} />
           <OrderHistory order={order} />
           {canCancel && (
