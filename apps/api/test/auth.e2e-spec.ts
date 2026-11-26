@@ -5,6 +5,7 @@ import request from 'supertest';
 import { AppModule } from '../src/app.module.js';
 import { configureApp } from '../src/app.setup.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
+import { resetDb } from './helpers.js';
 
 describe('Auth y roles (e2e)', () => {
   let app: NestExpressApplication;
@@ -28,9 +29,7 @@ describe('Auth y roles (e2e)', () => {
   });
 
   beforeEach(async () => {
-    await prisma.$executeRawUnsafe(
-      'TRUNCATE TABLE audit_logs, sessions, user_roles, users RESTART IDENTITY CASCADE',
-    );
+    await resetDb(prisma);
   });
 
   afterAll(async () => {
