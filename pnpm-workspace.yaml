@@ -1,0 +1,11 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# Paquetes a los que se permite ejecutar scripts de instalación (binarios nativos).
+onlyBuiltDependencies:
+  - "@prisma/engines"
+  - argon2
+  - prisma
+  - sharp
+  - unrs-resolver

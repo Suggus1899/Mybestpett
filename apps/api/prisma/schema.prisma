@@ -1,0 +1,271 @@
+// Modelo de datos de Petbf (fase 0: cimientos).
+// Convenciones:
+// - Ids UUID generados por la base de datos.
+// - Dinero en céntimos enteros de USD (Int) para evitar errores de coma flotante.
+//   Bs y euros se calculan con la tasa vigente y el pedido guardará su propia tasa.
+// - Tablas en snake_case y plural con @@map; campos en camelCase en el código.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------- Usuarios, sesiones y auditoría ----------
+
+// Una persona puede tener varios roles (por ejemplo catálogo y adopciones).
+enum Role {
+  CUSTOMER // cliente registrado; todos lo tienen
+  ADMIN // dueño: acceso total, gestiona cuentas y roles
+  ORDERS_OPERATOR // verifica pagos y gestiona pedidos
+  CATALOG_MANAGER // productos, precios, stock y animales en venta
+  ADOPTION_COORDINATOR // fichas de adopción y solicitudes
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique // siempre en minúsculas (lo normaliza la API)
+  passwordHash String
+  firstName    String
+  lastName     String
+  phone        String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  roles        UserRole[] @relation("UserRoles")
+  rolesGranted UserRole[] @relation("RolesGranted")
+  sessions     Session[]
+  auditLogs    AuditLog[]
+
+  @@map("users")
+}
+
+model UserRole {
+  userId      String   @db.Uuid
+  role        Role
+  grantedById String?  @db.Uuid // null si lo asignó el sistema (registro o seed)
+  grantedAt   DateTime @default(now())
+
+  user      User  @relation("UserRoles", fields: [userId], references: [id], onDelete: Cascade)
+  grantedBy User? @relation("RolesGranted", fields: [grantedById], references: [id], onDelete: SetNull)
+
+  @@id([userId, role])
+  @@index([role])
+  @@map("user_roles")
+}
+
+// Una sesión por dispositivo. Guarda solo el hash del refresh token.
+model Session {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @db.Uuid
+  refreshTokenHash String
+  userAgent        String?
+  ip               String?
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  createdAt        DateTime  @default(now())
+  lastUsedAt       DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("sessions")
+}
+
+// Registro de acciones sensibles: quién hizo qué, sobre qué y cuándo.
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  actorId    String?  @db.Uuid // null si la acción la hizo el sistema
+  action     String // por ejemplo "auth.login", "user.role_changed"
+  entityType String
+  entityId   String?
+  metadata   Json?
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([actorId, createdAt])
+  @@map("audit_logs")
+}
+
+// ---------- Catálogo de productos ----------
+
+enum Species {
+  DOG
+  CAT
+  BIRD
+  FISH
+  RODENT
+  REPTILE
+  OTHER
+}
+
+model Category {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String   @unique
+  parentId  String?  @db.Uuid
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children Category[] @relation("CategoryTree")
+  products Product[]
+
+  @@index([parentId])
+  @@map("categories")
+}
+
+model Brand {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+
+  products Product[]
+
+  @@map("brands")
+}
+
+model Product {
+  id           String    @id @default(uuid()) @db.Uuid
+  name         String
+  slug         String    @unique
+  description  String
+  categoryId   String    @db.Uuid
+  brandId      String?   @db.Uuid
+  species      Species[] // especies a las que va dirigido
+  // false para alimento e higiene: no admiten devolución una vez abiertos.
+  isReturnable Boolean   @default(true)
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  category Category         @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  brand    Brand?           @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  variants ProductVariant[]
+  images   ProductImage[]
+
+  @@index([categoryId])
+  @@map("products")
+}
+
+// Lo que realmente se compra: "Saco 3 kg", "Saco 15 kg". El stock vive aquí.
+model ProductVariant {
+  id                String   @id @default(uuid()) @db.Uuid
+  productId         String   @db.Uuid
+  sku               String   @unique
+  name              String
+  priceUsdCents     Int
+  compareAtUsdCents Int? // precio anterior para mostrar ofertas
+  stock             Int      @default(0)
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@map("product_variants")
+}
+
+model ProductImage {
+  id        String @id @default(uuid()) @db.Uuid
+  productId String @db.Uuid
+  url       String
+  alt       String
+  sortOrder Int    @default(0)
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@map("product_images")
+}
+
+// ---------- Animales: venta y adopción ----------
+
+enum AnimalListingType {
+  SALE
+  ADOPTION
+}
+
+enum AnimalStatus {
+  AVAILABLE
+  RESERVED
+  SOLD
+  ADOPTED
+  UNAVAILABLE
+}
+
+enum Sex {
+  MALE
+  FEMALE
+  UNKNOWN
+}
+
+model Animal {
+  id            String            @id @default(uuid()) @db.Uuid
+  name          String
+  slug          String            @unique
+  listingType   AnimalListingType
+  status        AnimalStatus      @default(AVAILABLE)
+  species       Species
+  breed         String?
+  sex           Sex               @default(UNKNOWN)
+  birthDate     DateTime?         @db.Date
+  description   String
+  priceUsdCents Int? // null en adopción
+  isVaccinated  Boolean           @default(false)
+  isSterilized  Boolean           @default(false)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  images AnimalImage[]
+
+  @@index([listingType, status])
+  @@map("animals")
+}
+
+model AnimalImage {
+  id        String @id @default(uuid()) @db.Uuid
+  animalId  String @db.Uuid
+  url       String
+  alt       String
+  sortOrder Int    @default(0)
+
+  animal Animal @relation(fields: [animalId], references: [id], onDelete: Cascade)
+
+  @@index([animalId])
+  @@map("animal_images")
+}
+
+// ---------- Monedas y tasas ----------
+
+enum Currency {
+  USD
+  VES
+  EUR
+  USDT
+}
+
+// Cuántas unidades de `quote` vale 1 USD según `source` (por ejemplo BCV).
+model ExchangeRate {
+  id          String   @id @default(uuid()) @db.Uuid
+  quote       Currency
+  rate        Decimal  @db.Decimal(20, 8)
+  source      String
+  effectiveAt DateTime
+  fetchedAt   DateTime @default(now())
+
+  @@unique([quote, source, effectiveAt])
+  @@index([quote, effectiveAt])
+  @@map("exchange_rates")
+}
