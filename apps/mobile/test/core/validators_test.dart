@@ -238,4 +238,26 @@ void main() {
       'El motivo admite hasta 500 caracteres',
     );
   });
+
+  test('reseña: título opcional de hasta 80 y texto de 10 a 1000', () {
+    expect(validateReviewTitle(null), isNull);
+    expect(validateReviewTitle(''), isNull);
+    expect(validateReviewTitle('${'x' * 80}  '), isNull);
+    expect(
+      validateReviewTitle('x' * 81),
+      'El título admite hasta 80 caracteres',
+    );
+    expect(validateReviewBody(null), 'Cuéntanos tu experiencia');
+    expect(validateReviewBody('   '), 'Cuéntanos tu experiencia');
+    expect(
+      validateReviewBody('  123456789  '),
+      'Cuéntanos un poco más (mínimo 10 caracteres)',
+    );
+    expect(validateReviewBody('1234567890'), isNull);
+    expect(validateReviewBody('x' * 1000), isNull);
+    expect(
+      validateReviewBody('x' * 1001),
+      'La reseña admite hasta 1000 caracteres',
+    );
+  });
 }

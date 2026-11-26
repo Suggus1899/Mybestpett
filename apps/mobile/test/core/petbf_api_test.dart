@@ -7,6 +7,7 @@ import 'package:petbf/core/petbf_api.dart';
 import 'package:petbf/core/token_store.dart';
 import 'package:petbf/models/catalog.dart';
 import 'package:petbf/models/json.dart';
+import 'package:petbf/models/reviews.dart';
 import 'package:petbf/models/shop.dart';
 import 'package:petbf/router.dart';
 
@@ -471,6 +472,223 @@ void main() {
     test('especies aceptadas para animales vivos', () async {
       backend.liveSpecies = ['DOG', 'BIRD'];
       expect(await api.animalSpecies(), [Species.dog, Species.bird]);
+    });
+  });
+
+  group('reseñas y recomendados', () {
+    const slug = 'mordedor-de-caucho';
+
+    Future<void> signIn() =>
+        api.login(email: 'ana@petbf.com', password: 'secreta123');
+
+    test('lista con orden, página y resumen', () async {
+      backend
+        ..seedReview(slug, rating: 5, author: 'Luis G.')
+        ..seedReview(slug, rating: 4, title: 'Bien')
+        ..seedReview(slug, rating: 1, status: 'HIDDEN', hiddenReason: 'Spam');
+      final page = await api.reviews(slug, sort: ReviewSort.worst, page: 1);
+      expect(
+        backend
+            .called('GET', '/products/$slug/reviews')
+            .single
+            .url
+            .queryParameters,
+        {'sort': 'worst', 'page': '1', 'pageSize': '10'},
+      );
+      expect(page.items.map((r) => r.rating), [4, 5]);
+      expect(page.items.first.title, 'Bien');
+      expect(page.items.last.title, isNull);
+      expect(page.items.last.author, 'Luis G.');
+      expect(page.items.last.verifiedPurchase, isTrue);
+      expect(page.summary.count, 2);
+      expect(page.summary.average, 4.5);
+      expect(page.summary.distribution, [0, 0, 0, 1, 1]);
+      expect(page.hasMore, isFalse);
+    });
+
+    test('sin reseñas el promedio es null', () async {
+      final page = await api.reviews(slug);
+      expect(page.items, isEmpty);
+      expect(page.summary.average, isNull);
+      expect(page.summary.distribution, [0, 0, 0, 0, 0]);
+    });
+
+    test('la reseña propia: sin compra, crear, editar y borrar', () async {
+      await signIn();
+      var mine = await api.myReview(slug);
+      expect(mine.canReview, isFalse);
+      expect(mine.review, isNull);
+      await expectLater(
+        api.saveReview(
+          slug,
+          const ReviewInput(rating: 5, body: 'Muy bueno, sí.'),
+        ),
+        throwsA(
+          isA<ApiException>()
+              .having((e) => e.status, 'status', 403)
+              .having(
+                (e) => e.message,
+                'message',
+                'Solo puedes reseñar productos que compraste y ya recibiste',
+              ),
+        ),
+      );
+
+      backend.seedOrder('ana@petbf.com', status: 'DELIVERED');
+      mine = await api.saveReview(
+        slug,
+        const ReviewInput(rating: 4, title: ' Bueno ', body: ' Resiste bien. '),
+      );
+      expect(lastBody('PUT', '/products/$slug/reviews/mine'), {
+        'rating': 4,
+        'title': 'Bueno',
+        'body': 'Resiste bien.',
+      });
+      expect(mine.canReview, isTrue);
+      expect(mine.review!.title, 'Bueno');
+      expect(mine.review!.hidden, isFalse);
+
+      mine = await api.saveReview(
+        slug,
+        const ReviewInput(rating: 2, title: '   ', body: 'Ya no resiste.'),
+      );
+      expect(lastBody('PUT', '/products/$slug/reviews/mine'), {
+        'rating': 2,
+        'body': 'Ya no resiste.',
+      });
+      expect(mine.review!.title, isNull);
+      expect((await api.product(slug)).rating.average, 2.0);
+
+      await api.deleteReview(slug);
+      expect((await api.myReview(slug)).review, isNull);
+      await expectLater(
+        api.deleteReview(slug),
+        throwsA(
+          isA<ApiException>().having(
+            (e) => e.message,
+            'message',
+            'No tienes una reseña de este producto',
+          ),
+        ),
+      );
+    });
+
+    test('la API rechaza la validación con el mensaje sin el campo', () async {
+      await signIn();
+      backend.seedOrder('ana@petbf.com', status: 'DELIVERED');
+      await expectLater(
+        api.saveReview(slug, const ReviewInput(rating: 5, body: 'corto')),
+        throwsA(
+          isA<ApiException>().having(
+            (e) => e.message,
+            'message',
+            'Cuéntanos un poco más (mínimo 10 caracteres)',
+          ),
+        ),
+      );
+    });
+
+    test('la reseña oculta trae el motivo', () async {
+      await signIn();
+      backend.seedReview(
+        slug,
+        rating: 1,
+        email: 'ana@petbf.com',
+        status: 'HIDDEN',
+        hiddenReason: 'Datos personales',
+      );
+      final own = (await api.myReview(slug)).review!;
+      expect(own.hidden, isTrue);
+      expect(own.hiddenReason, 'Datos personales');
+    });
+
+    test('sin sesión, la reseña propia pide entrar', () async {
+      await expectLater(
+        api.myReview(slug),
+        throwsA(isA<ApiException>().having((e) => e.status, 'status', 401)),
+      );
+    });
+
+    test('recomendados y valoración en tarjetas y ficha', () async {
+      backend.seedReview('alimento-seco-adulto', rating: 4);
+      final recs = await api.recommendations(slug);
+      expect(recs.map((p) => p.slug), ['alimento-seco-adulto']);
+      expect(recs.single.rating.average, 4.0);
+      expect(recs.single.rating.count, 1);
+      final cards = await api.products(const ProductQuery());
+      expect(
+        cards.items.firstWhere((p) => p.slug == slug).rating.hasReviews,
+        isFalse,
+      );
+    });
+
+    test('modelos estrictos y compatibles con una API anterior', () {
+      // Sin "rating" (API anterior): sin reseñas.
+      final card = ProductCard.fromJson({
+        'id': 'p',
+        'name': 'X',
+        'slug': 'x',
+        'species': <Object?>[],
+        'category': {'id': 'c', 'name': 'C', 'slug': 'c'},
+        'brand': null,
+        'image': null,
+        'priceFromUsdCents': 100,
+        'compareAtUsdCents': null,
+        'inStock': true,
+      });
+      expect(card.rating.hasReviews, isFalse);
+      expect(card.rating.averageText, '');
+
+      const r = Rating(average: 4.5, count: 1);
+      expect(r.averageText, '4,5');
+      expect(r.semantics, '4,5 de 5 estrellas, 1 reseña');
+      expect(
+        const Rating(average: 4, count: 12).semantics,
+        '4,0 de 5 estrellas, 12 reseñas',
+      );
+      expect(Rating.fromJson({'average': 3, 'count': 2}).average, 3.0);
+      expect(
+        () => Rating.fromJson({'average': '4.5', 'count': 2}),
+        throwsFormatException,
+      );
+      expect(
+        () => ReviewSummary.fromJson({
+          'count': 1,
+          'average': 5,
+          'distribution': [0, 0, 0, 1],
+        }),
+        throwsFormatException,
+      );
+      expect(
+        () => MyReview.fromJson({
+          'canReview': true,
+          'review': {
+            'rating': 3,
+            'title': null,
+            'body': 'Texto válido.',
+            'status': 'PENDING',
+            'hiddenReason': null,
+          },
+        }),
+        throwsFormatException,
+      );
+      expect(ReviewSort.best.label, 'Mejor valoradas');
+      expect(ReviewSort.worst.label, 'Peor valoradas');
+      expect(ReviewSort.recent.label, 'Más recientes');
+      expect(
+        const ReviewPage(
+          items: [],
+          total: 21,
+          page: 2,
+          pageSize: 10,
+          summary: ReviewSummary(
+            count: 21,
+            average: 4,
+            distribution: [0, 0, 0, 21, 0],
+          ),
+        ).hasMore,
+        isTrue,
+      );
     });
   });
 

@@ -19,6 +19,7 @@ import 'package:petbf/core/petbf_api.dart';
 import 'package:petbf/core/proof.dart';
 import 'package:petbf/core/token_store.dart';
 import 'package:petbf/models/catalog.dart';
+import 'package:petbf/models/reviews.dart';
 import 'package:petbf/models/shop.dart';
 
 final baseUrl = Platform.environment['CONTRACT_API_URL'];
@@ -142,6 +143,48 @@ void main() {
 
       final missing = await failure(api.product('no-existe-$stamp'));
       expect(missing.isNotFound, isTrue);
+    });
+
+    test('reseñas, valoración y recomendados', () async {
+      final card = (await api.products(const ProductQuery())).items.first;
+      // La tarjeta y la ficha traen la valoración.
+      expect(card.rating.count, greaterThanOrEqualTo(0));
+      final detail = await api.product(card.slug);
+      expect(detail.rating.count, card.rating.count);
+
+      final page = await api.reviews(card.slug, sort: ReviewSort.best);
+      expect(page.pageSize, 10);
+      expect(page.summary.count, page.total);
+      expect(page.summary.distribution, hasLength(5));
+      expect(page.summary.average, detail.rating.average);
+
+      // La cuenta nueva no recibió nada: no puede reseñar.
+      final mine = await api.myReview(card.slug);
+      expect(mine.canReview, isFalse);
+      expect(mine.review, isNull);
+      final denied = await failure(
+        api.saveReview(
+          card.slug,
+          const ReviewInput(rating: 5, body: 'Prueba de contrato de reseña'),
+        ),
+      );
+      expect(denied.status, 403);
+      expect(
+        denied.message,
+        'Solo puedes reseñar productos que compraste y ya recibiste',
+      );
+      final invalid = await failure(
+        api.saveReview(card.slug, const ReviewInput(rating: 6, body: 'corto')),
+      );
+      expect(invalid.status, 400);
+      expect(invalid.message, isNot(contains('rating')));
+      final none = await failure(api.deleteReview(card.slug));
+      expect(none.status, 404);
+      expect(none.message, 'No tienes una reseña de este producto');
+
+      final recs = await api.recommendations(card.slug);
+      expect(recs.length, lessThanOrEqualTo(4));
+      expect(recs.every((p) => p.slug != card.slug), isTrue);
     });
 
     test('especies aceptadas para animales vivos', () async {

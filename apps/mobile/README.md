@@ -9,8 +9,9 @@ BCV, compra solo con cuenta, pago reportado y verificado por el equipo.
 | Pantalla | Detalle |
 |----------|---------|
 | Inicio | Buscador, ofertas, tasa BCV del día, especies, novedades y animales que buscan hogar |
-| Tienda | Búsqueda (2 a 80 letras), filtros por categoría, especie y ofertas, orden, scroll infinito |
-| Producto | Galería, presentaciones, existencia, cantidad (máx. 20), si admite devolución |
+| Tienda | Búsqueda (2 a 80 letras), filtros por categoría, especie y ofertas, orden, scroll infinito, estrellas en cada tarjeta |
+| Producto | Galería, presentaciones, existencia, cantidad (máx. 20), si admite devolución, valoración, reseñas y "También te puede gustar" |
+| Reseñas | Promedio y distribución, orden (recientes, mejores, peores), 10 por página; quien recibió el producto escribe, edita o borra la suya (1 a 5 estrellas, título opcional de 80, texto de 10 a 1000) y ve si el equipo la ocultó |
 | Animales | Venta y adopción por separado, solo las especies que la tienda acepta, ficha con edad, vacunas y esterilización |
 | Carrito | Cambiar cantidades, avisos de stock, envío gratis desde 25 $ |
 | Checkout | Dirección (o crear una), zonas que llegan a ese estado, método de pago con el monto estimado en su moneda, términos |
@@ -67,13 +68,14 @@ Sin conexión, la sesión guardada no se borra y cada pantalla ofrece reintentar
 
 ```bash
 flutter analyze
-flutter test                     # 204 pruebas, sin red
+flutter test                     # 231 pruebas, sin red
 ```
 
 - `test/core`: dinero, formatos, validaciones, cliente HTTP (renovación, 401, errores) y lectura del JSON.
 - `test/flows`: la app completa en un teléfono de 390×844 sobre una API falsa en memoria
   (`test/support/fake_backend.dart`): entrar, registro, catálogo, carrito, checkout,
-  pedidos, reporte de pago, comprobantes, devoluciones y direcciones, con sus validaciones y errores.
+  pedidos, reporte de pago, comprobantes, devoluciones, reseñas, recomendados y direcciones, con sus
+  validaciones y errores.
 
 Prueba de contrato contra la API real (la corre CI con datos de ejemplo):
 
@@ -84,7 +86,8 @@ CONTRACT_API_URL=http://localhost:3001/v1 flutter test contract
 ```
 
 Crea una cuenta nueva, compra, reporta el pago, sube y descarga el comprobante,
-intenta devolver un pedido sin entregar y cancela un segundo pedido. También
+intenta devolver un pedido sin entregar, cancela un segundo pedido y lee las
+reseñas y los recomendados (sin haber recibido el producto, reseñar da 403). También
 comprueba que el monto en Bs que calcula la app es el mismo que fija la API.
 
 CI (`.github/workflows/ci.yml`, job `mobile`) corre formato, análisis, pruebas,

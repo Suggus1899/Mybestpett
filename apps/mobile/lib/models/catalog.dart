@@ -72,6 +72,37 @@ class Category {
   final String? parentId;
 }
 
+/// Promedio (redondeado a un decimal) y número de reseñas visibles.
+class Rating {
+  const Rating({this.average, this.count = 0});
+  factory Rating.fromJson(Json json) => Rating(
+    average: switch (json['average']) {
+      final num n => n.toDouble(),
+      null => null,
+      final other => throw FormatException('Promedio inválido: $other'),
+    },
+    count: json.integer('count'),
+  );
+
+  /// Lee `rating` si viene; una API anterior no lo manda.
+  static Rating of(Json json) => json.objOrNull('rating') == null
+      ? const Rating()
+      : Rating.fromJson(json.obj('rating'));
+
+  final double? average;
+  final int count;
+
+  bool get hasReviews => average != null && count > 0;
+
+  /// "4,5"
+  String get averageText =>
+      average == null ? '' : average!.toStringAsFixed(1).replaceAll('.', ',');
+
+  /// "4,5 de 5 estrellas, 12 reseñas", para lectores de pantalla.
+  String get semantics =>
+      '$averageText de 5 estrellas, $count ${count == 1 ? 'reseña' : 'reseñas'}';
+}
+
 class ProductCard {
   const ProductCard({
     required this.id,
@@ -84,6 +115,7 @@ class ProductCard {
     required this.priceFromUsdCents,
     required this.compareAtUsdCents,
     required this.inStock,
+    this.rating = const Rating(),
   });
 
   factory ProductCard.fromJson(Json json) => ProductCard(
@@ -99,12 +131,14 @@ class ProductCard {
     priceFromUsdCents: json.intOrNull('priceFromUsdCents'),
     compareAtUsdCents: json.intOrNull('compareAtUsdCents'),
     inStock: json.boolean('inStock'),
+    rating: Rating.of(json),
   );
 
   final String id;
   final String name;
   final String slug;
   final List<Species> species;
+  final Rating rating;
   final String categoryName;
   final String? brandName;
   final ImageRef? image;
@@ -151,6 +185,7 @@ class ProductDetail {
     required this.brandName,
     required this.images,
     required this.variants,
+    this.rating = const Rating(),
   });
 
   factory ProductDetail.fromJson(Json json) => ProductDetail(
@@ -165,7 +200,10 @@ class ProductDetail {
     brandName: json.objOrNull('brand')?.str('name'),
     images: asList(json['images'], ImageRef.fromJson),
     variants: asList(json['variants'], Variant.fromJson),
+    rating: Rating.of(json),
   );
+
+  final Rating rating;
 
   final String id;
   final String name;

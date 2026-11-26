@@ -93,6 +93,45 @@ class FakeBackend {
     ),
   ];
 
+  /// Reseñas: id, productId, email, rating, title, body, status,
+  /// hiddenReason, createdAt.
+  final reviews = <Json>[];
+  int _reviewCounter = 0;
+
+  /// productId -> slugs recomendados (si falta, los de la misma especie).
+  final recommendations = <String, List<String>>{};
+
+  /// Añade una reseña ya publicada (de otra persona si no se da email).
+  Json seedReview(
+    String slug, {
+    required int rating,
+    String body = 'Muy buen producto para mi mascota.',
+    String? title,
+    String email = 'otra@petbf.com',
+    String author = 'Otra P.',
+    DateTime? createdAt,
+    String status = 'VISIBLE',
+    String? hiddenReason,
+  }) {
+    final product = products.firstWhere((p) => p['slug'] == slug);
+    _reviewCounter++;
+    final review = <String, Object?>{
+      'id': 'r-$_reviewCounter',
+      'productId': product['id'],
+      'email': email,
+      'author': author,
+      'rating': rating,
+      'title': title,
+      'body': body,
+      'status': status,
+      'hiddenReason': hiddenReason,
+      'createdAt': (createdAt ?? now).toIso8601String(),
+      'updatedAt': (createdAt ?? now).toIso8601String(),
+    };
+    reviews.add(review);
+    return review;
+  }
+
   /// Especies que la tienda acepta (GET /animal-species).
   List<String> liveSpecies = ['DOG', 'CAT', 'BIRD', 'RODENT', 'FISH'];
 
@@ -383,6 +422,40 @@ class FakeBackend {
       });
     }
     if (m == 'GET' && path == '/products') return _listProducts(r.url);
+    if (segments.length >= 3 && segments[0] == 'products') {
+      final p = products.where((p) => p['slug'] == segments[1]).firstOrNull;
+      if (p == null || p['isActive'] != true) {
+        throw const _HttpError(404, 'Producto no encontrado');
+      }
+      if (m == 'GET' && segments.length == 3 && segments[2] == 'reviews') {
+        return _listReviews(p, r.url.queryParameters);
+      }
+      if (m == 'GET' &&
+          segments.length == 3 &&
+          segments[2] == 'recommendations') {
+        return _json(200, _recommend(p));
+      }
+      if (segments.length == 4 &&
+          segments[2] == 'reviews' &&
+          segments[3] == 'mine') {
+        final email = _auth(r);
+        if (m == 'GET') return _json(200, _mine(p, email));
+        if (m == 'PUT') return _upsertReview(p, email, _body(r));
+        if (m == 'DELETE') {
+          final before = reviews.length;
+          reviews.removeWhere(
+            (x) => x['productId'] == p['id'] && x['email'] == email,
+          );
+          if (reviews.length == before) {
+            throw const _HttpError(
+              404,
+              'No tienes una reseña de este producto',
+            );
+          }
+          return _json(204, null);
+        }
+      }
+    }
     if (m == 'GET' && segments.length == 2 && segments[0] == 'products') {
       final p = products.where((p) => p['slug'] == segments[1]).firstOrNull;
       if (p == null || p['isActive'] != true) {
@@ -639,7 +712,176 @@ class FakeBackend {
       'priceFromUsdCents': cheapest?['priceUsdCents'],
       'compareAtUsdCents': cheapest?['compareAtUsdCents'],
       'inStock': variants.any((v) => (v['stock']! as int) > 0),
+      'rating': _rating(p),
     };
+  }
+
+  List<Json> _visibleReviews(Json p) => reviews
+      .where((r) => r['productId'] == p['id'] && r['status'] == 'VISIBLE')
+      .toList();
+
+  Json _distribution(List<Json> list) {
+    final distribution = [
+      for (var stars = 1; stars <= 5; stars++)
+        list.where((r) => r['rating'] == stars).length,
+    ];
+    final count = list.length;
+    final sum = list.fold(0, (a, r) => a + (r['rating']! as int));
+    return {
+      'count': count,
+      'average': count == 0 ? null : (sum / count * 10).round() / 10,
+      'distribution': distribution,
+    };
+  }
+
+  Json _rating(Json p) {
+    final d = _distribution(_visibleReviews(p));
+    return {'average': d['average'], 'count': d['count']};
+  }
+
+  http.Response _listReviews(Json p, Map<String, String> q) {
+    final sort = q['sort'] ?? 'recent';
+    if (!['recent', 'best', 'worst'].contains(sort)) {
+      throw const _HttpError(400, ['sort: Invalid option']);
+    }
+    final list = _visibleReviews(p);
+    int byDate(Json a, Json b) =>
+        (b['createdAt']! as String).compareTo(a['createdAt']! as String);
+    list.sort((a, b) {
+      final byRating = switch (sort) {
+        'best' => (b['rating']! as int).compareTo(a['rating']! as int),
+        'worst' => (a['rating']! as int).compareTo(b['rating']! as int),
+        _ => 0,
+      };
+      return byRating != 0 ? byRating : byDate(a, b);
+    });
+    final page = int.parse(q['page'] ?? '1');
+    final size = int.parse(q['pageSize'] ?? '24');
+    return _json(200, {
+      'items': [
+        for (final r in list.skip((page - 1) * size).take(size))
+          {
+            'id': r['id'],
+            'rating': r['rating'],
+            'title': r['title'],
+            'body': r['body'],
+            'createdAt': r['createdAt'],
+            'updatedAt': r['updatedAt'],
+            'author': r['author'],
+            'verifiedPurchase': true,
+          },
+      ],
+      'total': list.length,
+      'page': page,
+      'pageSize': size,
+      'summary': _distribution(list),
+    });
+  }
+
+  bool _bought(Json p, String email) => orders.any(
+    (o) =>
+        o['_owner'] == email &&
+        o['status'] == 'DELIVERED' &&
+        (o['items']! as List).any(
+          (i) => (i as Json)['productSlug'] == p['slug'],
+        ),
+  );
+
+  Json _mine(Json p, String email) {
+    final own = reviews
+        .where((r) => r['productId'] == p['id'] && r['email'] == email)
+        .firstOrNull;
+    return {
+      'canReview': _bought(p, email),
+      'review': own == null
+          ? null
+          : {
+              for (final k in [
+                'id',
+                'rating',
+                'title',
+                'body',
+                'status',
+                'hiddenReason',
+                'createdAt',
+                'updatedAt',
+              ])
+                k: own[k],
+            },
+    };
+  }
+
+  http.Response _upsertReview(Json p, String email, Json body) {
+    final rating = body['rating'];
+    final title = (body['title'] as String?)?.trim();
+    final text = body['body'];
+    if (rating is! int || rating < 1 || rating > 5) {
+      throw const _HttpError(400, ['rating: Elige de 1 a 5 estrellas']);
+    }
+    if (title != null && title.length > 80) {
+      throw const _HttpError(400, [
+        'title: El título admite hasta 80 caracteres',
+      ]);
+    }
+    if (text is! String) {
+      throw const _HttpError(400, ['body: Cuéntanos tu experiencia']);
+    }
+    if (text.trim().length < 10) {
+      throw const _HttpError(400, [
+        'body: Cuéntanos un poco más (mínimo 10 caracteres)',
+      ]);
+    }
+    if (text.trim().length > 1000) {
+      throw const _HttpError(400, [
+        'body: La reseña admite hasta 1000 caracteres',
+      ]);
+    }
+    if (!_bought(p, email)) {
+      throw const _HttpError(
+        403,
+        'Solo puedes reseñar productos que compraste y ya recibiste',
+      );
+    }
+    final values = {
+      'rating': rating,
+      'title': (title == null || title.isEmpty) ? null : title,
+      'body': text.trim(),
+      'updatedAt': now.toIso8601String(),
+    };
+    final own = reviews
+        .where((r) => r['productId'] == p['id'] && r['email'] == email)
+        .firstOrNull;
+    if (own != null) {
+      own.addAll(values);
+    } else {
+      final user = _user(email);
+      seedReview(
+        p['slug']! as String,
+        rating: rating,
+        body: text.trim(),
+        email: email,
+        author: '${user['firstName']} ${(user['lastName']! as String)[0]}.',
+      ).addAll(values);
+    }
+    return _json(200, _mine(p, email));
+  }
+
+  List<Json> _recommend(Json p) {
+    final explicit = recommendations[p['id']];
+    final list = explicit != null
+        ? [
+            for (final slug in explicit)
+              products.firstWhere((x) => x['slug'] == slug),
+          ]
+        : products.where(
+            (x) =>
+                x['id'] != p['id'] &&
+                x['isActive'] == true &&
+                (x['species']! as List).any(
+                  (s) => (p['species']! as List).contains(s),
+                ),
+          );
+    return list.take(4).map(_card).toList();
   }
 
   Json _detail(Json p) => {
@@ -653,6 +895,7 @@ class FakeBackend {
     'category': _category(p['category']! as String),
     'brand': null,
     'images': <Json>[],
+    'rating': _rating(p),
     'variants': [
       for (final v in p['variants']! as List<Json>)
         if (v['isActive'] == true)

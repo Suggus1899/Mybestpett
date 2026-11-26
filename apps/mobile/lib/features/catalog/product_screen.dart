@@ -7,6 +7,8 @@ import '../../core/providers.dart';
 import '../../core/theme.dart';
 import '../../models/catalog.dart';
 import '../../widgets/common.dart';
+import '../../widgets/rating.dart';
+import 'reviews_section.dart';
 
 class ProductScreen extends ConsumerWidget {
   const ProductScreen({super.key, required this.slug});
@@ -173,6 +175,10 @@ class _ProductViewState extends ConsumerState<_ProductView> {
                 ),
                 const SizedBox(height: 6),
                 Text(p.name, style: text.headlineSmall),
+                if (p.rating.hasReviews) ...[
+                  const SizedBox(height: 4),
+                  RatingStars(p.rating, size: 16),
+                ],
                 const SizedBox(height: 10),
                 if (variant != null)
                   Row(
@@ -269,6 +275,10 @@ class _ProductViewState extends ConsumerState<_ProductView> {
                     ],
                   ),
                 ),
+                const SizedBox(height: 28),
+                ProductReviews(slug: p.slug),
+                const SizedBox(height: 28),
+                Recommendations(slug: p.slug),
               ],
             ),
           ),

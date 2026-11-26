@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/catalog.dart';
+import '../models/reviews.dart';
 import '../models/json.dart';
 import '../models/shop.dart';
 import 'api_client.dart';
@@ -121,6 +122,86 @@ final productProvider = FutureProvider.autoDispose
     .family<ProductDetail, String>(
       (ref, slug) => ref.watch(apiProvider).product(slug),
     );
+
+// ---------- Reseñas y recomendaciones ----------
+
+class ReviewsState {
+  const ReviewsState({
+    required this.items,
+    required this.summary,
+    required this.page,
+    required this.total,
+  });
+  ReviewsState.first(ReviewPage p)
+    : this(items: p.items, summary: p.summary, page: p.page, total: p.total);
+
+  final List<Review> items;
+  final ReviewSummary summary;
+  final int page;
+  final int total;
+
+  bool get hasMore => items.length < total;
+
+  ReviewsState append(ReviewPage p) => ReviewsState(
+    items: [...items, ...p.items],
+    summary: p.summary,
+    page: p.page,
+    total: p.total,
+  );
+}
+
+/// Reseñas visibles de un producto con un orden; "Ver más" trae otra página.
+class ReviewsController extends AsyncNotifier<ReviewsState> {
+  ReviewsController(this.key);
+  final (String, ReviewSort) key;
+  bool _loadingMore = false;
+
+  @override
+  Future<ReviewsState> build() async => ReviewsState.first(
+    await ref.read(apiProvider).reviews(key.$1, sort: key.$2),
+  );
+
+  /// Lanza [ApiException] si falla, para avisar sin perder lo ya cargado.
+  Future<void> loadMore() async {
+    final current = state.value;
+    if (current == null || !current.hasMore || _loadingMore) return;
+    _loadingMore = true;
+    try {
+      final next = await ref
+          .read(apiProvider)
+          .reviews(key.$1, sort: key.$2, page: current.page + 1);
+      if (ref.mounted) state = AsyncData(current.append(next));
+    } finally {
+      _loadingMore = false;
+    }
+  }
+}
+
+final reviewsProvider = AsyncNotifierProvider.autoDispose
+    .family<ReviewsController, ReviewsState, (String, ReviewSort)>(
+      ReviewsController.new,
+    );
+
+/// Si la persona puede reseñar y su reseña; null sin sesión.
+final myReviewProvider = FutureProvider.autoDispose.family<MyReview?, String>((
+  ref,
+  slug,
+) async {
+  final userId = ref.watch(sessionProvider.select((s) => s.value?.id));
+  if (userId == null) return null;
+  return ref.read(apiProvider).myReview(slug);
+});
+
+/// "También te puede gustar". Si falla (salvo sin conexión), no se muestra.
+final recommendationsProvider = FutureProvider.autoDispose
+    .family<List<ProductCard>, String>((ref, slug) async {
+      try {
+        return await ref.read(apiProvider).recommendations(slug);
+      } on ApiException catch (e) {
+        if (e.isNetwork) rethrow;
+        return const [];
+      }
+    });
 
 /// Especies con animales en la tienda; si falla, se muestran todas.
 final animalSpeciesProvider = FutureProvider<List<Species>>((ref) async {
