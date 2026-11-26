@@ -13,8 +13,14 @@ import type { AuthUser, RequestMeta } from './auth.types.js';
 import { CurrentUser, Public } from './decorators.js';
 import { ReqMeta } from './request-meta.js';
 
-// Límite más estricto en las rutas que reciben contraseñas.
-const strict = { default: { limit: 10, ttl: 60_000 } };
+// Límite más estricto en las rutas que reciben contraseñas (10 por minuto
+// y por IP; AUTH_THROTTLE_LIMIT ya validado al arrancar).
+const strict = {
+  default: {
+    limit: () => Number(process.env.AUTH_THROTTLE_LIMIT ?? 10),
+    ttl: 60_000,
+  },
+};
 
 @Controller('auth')
 export class AuthController {

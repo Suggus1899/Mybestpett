@@ -20,14 +20,18 @@ pnpm db:up                                   # PostgreSQL en Docker
 cp apps/api/.env.example apps/api/.env       # cambia JWT_ACCESS_SECRET
 cp apps/web/.env.example apps/web/.env.local
 pnpm db:migrate                              # crea las tablas
-pnpm db:seed                                 # admin (SEED_ADMIN_EMAIL/PASSWORD) y categorías
+pnpm db:seed                                 # admin y categorías; SEED_DEMO=true añade ejemplos
 pnpm dev                                     # web en :3000, API en :3001
 ```
 
 ## Comandos
 
 - `pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm build`: en todo el monorepo con Turborepo.
-- `pnpm --filter api test:e2e`: pruebas e2e de la API (ver `apps/api/README.md`).
+- `pnpm --filter api test:e2e`: pruebas e2e de la API contra una base desechable (ver `apps/api/README.md`).
+- `pnpm --filter web test:e2e`: pruebas de navegador (Playwright) de cliente y panel. Necesitan
+  `pnpm build` y la base con datos de ejemplo: `SEED_DEMO=true pnpm db:seed`.
+- `docker build -f apps/api/Dockerfile -t petbf-api .`: imagen de la API (la etapa `migrate`
+  aplica las migraciones).
 
 ## Decisiones clave
 

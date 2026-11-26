@@ -26,6 +26,10 @@ jobs:
     env:
       DATABASE_URL: postgresql://petbf:petbf@localhost:5432/petbf_test?schema=public
       JWT_ACCESS_SECRET: secreto-solo-para-ci-0123456789abcdef0123456789
+      SEED_ADMIN_EMAIL: admin@petbf.local
+      SEED_ADMIN_PASSWORD: admin-local-123456
+      E2E_ADMIN_EMAIL: admin@petbf.local
+      E2E_ADMIN_PASSWORD: admin-local-123456
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -40,3 +44,15 @@ jobs:
       - run: pnpm --filter api prisma:deploy
       - run: pnpm --filter api test:e2e
       - run: pnpm build
+      # Pruebas de navegador: datos de ejemplo sobre la base ya vaciada por las e2e.
+      - run: pnpm --filter api prisma:seed
+        env:
+          SEED_DEMO: "true"
+      - run: pnpm --filter web exec playwright install --with-deps chromium
+      - run: pnpm --filter web test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-results
+          path: apps/web/test-results
+          retention-days: 7
