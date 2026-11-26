@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import type { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { PromotionsService } from '../promotions/promotions.service.js';
 import { MAX_LINES, MAX_QUANTITY, type AddItemDto } from './cart.schemas.js';
 
 const itemInclude = {
@@ -43,10 +44,14 @@ export function lineIssue(row: Row): CartIssue {
 
 @Injectable()
 export class CartService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly promotions: PromotionsService,
+  ) {}
 
-  // El precio siempre es el actual: el carrito no congela nada.
-  async get(userId: string) {
+  // El precio siempre es el actual: el carrito no congela nada. Los combos
+  // completos se descuentan solos; el cupón se prueba con `quote`.
+  async get(userId: string, coupon?: string) {
     const rows = await this.rows(this.prisma, userId);
     const items = rows.map((row) => {
       const issue = lineIssue(row);
@@ -71,12 +76,77 @@ export class CartService {
       };
     });
     const valid = items.filter((i) => i.issue === null);
+    const quote = await this.promotions.quote(
+      this.prisma,
+      userId,
+      valid.map((i) => ({
+        variantId: i.variantId,
+        quantity: i.quantity,
+        unitPriceUsdCents: i.unitPriceUsdCents,
+      })),
+      coupon,
+    );
     return {
       items,
       itemCount: items.reduce((n, i) => n + i.quantity, 0),
-      subtotalUsdCents: valid.reduce((n, i) => n + i.lineTotalUsdCents, 0),
+      subtotalUsdCents: quote.subtotalUsdCents,
+      combos: quote.combos,
+      comboDiscountUsdCents: quote.comboDiscountUsdCents,
+      coupon: quote.coupon && {
+        code: quote.coupon.code,
+        description: quote.coupon.description,
+        discountUsdCents: quote.coupon.discountUsdCents,
+      },
+      itemsTotalUsdCents: quote.itemsTotalUsdCents,
       canCheckout: items.length > 0 && valid.length === items.length,
     };
+  }
+
+  // Añade todas las unidades de un combo, o ninguna si alguna no alcanza.
+  async addCombo(userId: string, slug: string, times: number) {
+    const combo = await this.promotions.getCombo(slug);
+    const existing = await this.prisma.cartItem.findMany({ where: { userId } });
+    const newLines = combo.items.filter(
+      (i) => !existing.some((e) => e.variantId === i.variantId),
+    ).length;
+    if (existing.length + newLines > MAX_LINES) {
+      throw new BadRequestException(
+        `El carrito admite hasta ${MAX_LINES} productos distintos`,
+      );
+    }
+    const stock = await this.prisma.productVariant.findMany({
+      where: { id: { in: combo.items.map((i) => i.variantId) } },
+      select: { id: true, stock: true },
+    });
+    const wanted = combo.items.map((i) => {
+      const quantity =
+        (existing.find((e) => e.variantId === i.variantId)?.quantity ?? 0) +
+        i.quantity * times;
+      const available = stock.find((v) => v.id === i.variantId)?.stock ?? 0;
+      if (quantity > MAX_QUANTITY) {
+        throw new BadRequestException(
+          `Puedes llevar hasta ${MAX_QUANTITY} unidades de ${i.product.name} (${i.variantName})`,
+        );
+      }
+      if (quantity > available) {
+        throw new ConflictException(
+          available === 0
+            ? `${i.product.name} (${i.variantName}) está agotado`
+            : `Solo hay ${available} disponibles de ${i.product.name} (${i.variantName})`,
+        );
+      }
+      return { variantId: i.variantId, quantity };
+    });
+    await this.prisma.$transaction(
+      wanted.map((w) =>
+        this.prisma.cartItem.upsert({
+          where: { userId_variantId: { userId, variantId: w.variantId } },
+          create: { userId, ...w },
+          update: { quantity: w.quantity },
+        }),
+      ),
+    );
+    return this.get(userId);
   }
 
   // Suma a lo que ya había en el carrito.

@@ -5,6 +5,7 @@ import type { Address, PaymentMethod, ShippingZone } from '@/lib/api';
 import { formatMoney, formatUsd } from '@/lib/format';
 import { estimateCharge } from '@/lib/orders';
 import {
+  addComboToCartAction,
   addToCartAction,
   attachProofAction,
   cancelMyOrderAction,
@@ -42,6 +43,37 @@ export function AddToCartForm({ variantId, back, label }: { variantId: string; b
         />
         <Button type="submit" disabled={pending} aria-label={`Añadir ${label} al carrito`}>
           {pending ? 'Añadiendo…' : 'Añadir'}
+        </Button>
+      </div>
+      <div aria-live="polite">
+        <Notice error={state.error} ok={state.ok} />
+      </div>
+    </form>
+  );
+}
+
+export function AddComboForm({ slug, name, max }: { slug: string; name: string; max: number }) {
+  const [state, action, pending] = useActionState<ActionState, FormData>(addComboToCartAction, {});
+  return (
+    <form action={action} className="flex flex-col gap-2">
+      <input type="hidden" name="slug" value={slug} />
+      <div className="flex items-center gap-2">
+        <label htmlFor={`combo-${slug}`} className="sr-only">
+          Cantidad del combo {name}
+        </label>
+        <input
+          id={`combo-${slug}`}
+          name="quantity"
+          type="number"
+          inputMode="numeric"
+          min={1}
+          max={Math.min(5, max)}
+          defaultValue={1}
+          required
+          className={`${inputClass} w-20 px-3`}
+        />
+        <Button type="submit" disabled={pending} aria-label={`Añadir combo ${name} al carrito`}>
+          {pending ? 'Añadiendo…' : 'Añadir combo'}
         </Button>
       </div>
       <div aria-live="polite">
@@ -134,14 +166,16 @@ export function CheckoutForm({
   addresses,
   zones,
   methods,
-  subtotalUsdCents,
+  itemsTotalUsdCents,
+  couponCode,
   usdVes,
   eurVes,
 }: {
   addresses: Address[];
   zones: ShippingZone[];
   methods: PaymentMethod[];
-  subtotalUsdCents: number;
+  itemsTotalUsdCents: number; // productos con combos y cupón descontados
+  couponCode?: string;
   usdVes: string | null;
   eurVes: string | null;
 }) {
@@ -157,13 +191,14 @@ export function CheckoutForm({
   const [methodId, setMethodId] = useState(methods[0]?.id);
   const method = methods.find((m) => m.id === methodId);
 
-  const shipping = zone ? (subtotalUsdCents >= zone.freeOverUsdCents ? 0 : zone.priceUsdCents) : 0;
-  const total = subtotalUsdCents + shipping;
+  const shipping = zone ? (itemsTotalUsdCents >= zone.freeOverUsdCents ? 0 : zone.priceUsdCents) : 0;
+  const total = itemsTotalUsdCents + shipping;
   const charge = method ? estimateCharge(total, method.currency, usdVes, eurVes) : null;
 
   return (
     <form action={action} className="flex flex-col gap-6">
       <Notice error={state.error} />
+      {couponCode && <input type="hidden" name="couponCode" value={couponCode} />}
 
       <fieldset className="flex flex-col gap-2">
         <legend className="mb-2 text-xl font-display">Dirección de envío</legend>
@@ -211,7 +246,7 @@ export function CheckoutForm({
                 </span>
               </span>
               <span className="font-bold">
-                {subtotalUsdCents >= z.freeOverUsdCents ? 'Gratis' : formatUsd(z.priceUsdCents)}
+                {itemsTotalUsdCents >= z.freeOverUsdCents ? 'Gratis' : formatUsd(z.priceUsdCents)}
               </span>
             </label>
           ))
@@ -236,8 +271,8 @@ export function CheckoutForm({
       </fieldset>
 
       <dl className="grid grid-cols-[1fr_auto] gap-y-1 rounded-[var(--radius-card)] border border-line bg-white p-5">
-        <dt>Subtotal</dt>
-        <dd className="text-right">{formatUsd(subtotalUsdCents)}</dd>
+        <dt>Productos</dt>
+        <dd className="text-right">{formatUsd(itemsTotalUsdCents)}</dd>
         <dt>Envío</dt>
         <dd className="text-right">{shipping === 0 ? 'Gratis' : formatUsd(shipping)}</dd>
         <dt className="font-extrabold">Total</dt>
@@ -251,9 +286,9 @@ export function CheckoutForm({
           </>
         )}
       </dl>
-      {subtotalUsdCents < 2500 && (
+      {itemsTotalUsdCents < 2500 && (
         <p className="text-sm text-slate">
-          Te faltan {formatUsd(2500 - subtotalUsdCents)} para el envío gratis.
+          Te faltan {formatUsd(2500 - itemsTotalUsdCents)} para el envío gratis.
         </p>
       )}
 

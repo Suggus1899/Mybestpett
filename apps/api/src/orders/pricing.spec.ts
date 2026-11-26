@@ -1,6 +1,9 @@
 import { Prisma } from '../generated/prisma/client.js';
 import {
   chargedAmount,
+  comboDiscounts,
+  couponDiscount,
+  discountedShare,
   MissingRateError,
   orderCode,
   parseOrderCode,
@@ -67,5 +70,137 @@ describe('códigos de pedido', () => {
     expect(parseOrderCode('123')).toBe(123);
     expect(parseOrderCode('PB-12a')).toBeNull();
     expect(parseOrderCode('')).toBeNull();
+  });
+});
+
+describe('comboDiscounts', () => {
+  const kit = {
+    id: 'kit',
+    name: 'Kit baño',
+    priceUsdCents: 1500,
+    items: [
+      { variantId: 'champu', quantity: 1, unitPriceUsdCents: 1000 },
+      { variantId: 'toalla', quantity: 1, unitPriceUsdCents: 800 },
+    ],
+  };
+  const duo = {
+    id: 'duo',
+    name: 'Dos champús',
+    priceUsdCents: 1500,
+    items: [{ variantId: 'champu', quantity: 2, unitPriceUsdCents: 1000 }],
+  };
+
+  it('cuenta los combos completos y su ahorro', () => {
+    const cart = new Map([
+      ['champu', 3],
+      ['toalla', 2],
+    ]);
+    expect(comboDiscounts(cart, [kit])).toEqual([
+      { comboId: 'kit', name: 'Kit baño', count: 2, savingsUsdCents: 600 },
+    ]);
+  });
+
+  it('no aplica un combo incompleto', () => {
+    expect(comboDiscounts(new Map([['champu', 1]]), [kit])).toEqual([]);
+  });
+
+  it('una unidad sirve para un solo combo, primero el que más ahorra', () => {
+    // duo ahorra 5 $, kit 3 $: con 2 champús y 1 toalla gana duo.
+    const cart = new Map([
+      ['champu', 2],
+      ['toalla', 1],
+    ]);
+    expect(comboDiscounts(cart, [kit, duo])).toEqual([
+      { comboId: 'duo', name: 'Dos champús', count: 1, savingsUsdCents: 500 },
+    ]);
+    // Con 3 champús sobra uno para el kit.
+    const more = new Map([
+      ['champu', 3],
+      ['toalla', 1],
+    ]);
+    expect(comboDiscounts(more, [kit, duo]).map((c) => c.comboId)).toEqual([
+      'duo',
+      'kit',
+    ]);
+  });
+
+  it('ignora combos que no ahorran (los precios subieron después)', () => {
+    const caro = { ...kit, priceUsdCents: 1800 };
+    expect(
+      comboDiscounts(
+        new Map([
+          ['champu', 1],
+          ['toalla', 1],
+        ]),
+        [caro],
+      ),
+    ).toEqual([]);
+  });
+
+  it('no modifica el carrito recibido', () => {
+    const cart = new Map([
+      ['champu', 1],
+      ['toalla', 1],
+    ]);
+    comboDiscounts(cart, [kit]);
+    expect(cart.get('champu')).toBe(1);
+  });
+});
+
+describe('couponDiscount', () => {
+  it('porcentaje redondeado hacia abajo', () => {
+    expect(
+      couponDiscount(1999, {
+        type: 'PERCENT',
+        value: 10,
+        maxDiscountUsdCents: null,
+      }),
+    ).toBe(199);
+  });
+  it('respeta el tope del porcentaje', () => {
+    expect(
+      couponDiscount(10_000, {
+        type: 'PERCENT',
+        value: 20,
+        maxDiscountUsdCents: 1000,
+      }),
+    ).toBe(1000);
+  });
+  it('monto fijo sin pasar del total de los productos', () => {
+    expect(
+      couponDiscount(3000, {
+        type: 'FIXED',
+        value: 500,
+        maxDiscountUsdCents: null,
+      }),
+    ).toBe(500);
+    expect(
+      couponDiscount(300, {
+        type: 'FIXED',
+        value: 500,
+        maxDiscountUsdCents: null,
+      }),
+    ).toBe(300);
+  });
+});
+
+describe('discountedShare', () => {
+  const order = {
+    subtotalUsdCents: 4000,
+    comboDiscountUsdCents: 500,
+    couponDiscountUsdCents: 300,
+  };
+  it('reparte los descuentos en proporción', () => {
+    // Se pagó 3200 de 4000: un producto de 1000 devuelve 800.
+    expect(discountedShare(1000, order)).toBe(800);
+  });
+  it('sin descuentos devuelve el precio de lista', () => {
+    expect(
+      discountedShare(1000, {
+        ...order,
+        comboDiscountUsdCents: 0,
+        couponDiscountUsdCents: 0,
+      }),
+    ).toBe(1000);
   });
 });

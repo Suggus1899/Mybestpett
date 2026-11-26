@@ -18,6 +18,7 @@ import { HealthController } from './health/health.controller.js';
 import { OrdersModule } from './orders/orders.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { RatesModule } from './rates/rates.module.js';
+import { PromotionsModule } from './promotions/promotions.module.js';
 import { ReviewsModule } from './reviews/reviews.module.js';
 import { StoreModule } from './store/store.module.js';
 import { UsersModule } from './users/users.module.js';
@@ -46,6 +47,7 @@ import { UsersModule } from './users/users.module.js';
     CartModule,
     OrdersModule,
     ReviewsModule,
+    PromotionsModule,
   ],
   controllers: [HealthController],
   providers: [

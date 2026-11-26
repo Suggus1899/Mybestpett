@@ -18,7 +18,7 @@ import type {
   RequestReturnDto,
 } from './orders.schemas.js';
 import { OrdersService, withCode } from './orders.service.js';
-import { chargedAmount, RETURN_WINDOW_MS } from './pricing.js';
+import { chargedAmount, discountedShare, RETURN_WINDOW_MS } from './pricing.js';
 
 type Tx = Prisma.TransactionClient;
 
@@ -87,7 +87,7 @@ export class ReturnsService {
     if (open) throw this.alreadyOpen();
 
     const taken = await this.takenByItem(orderId);
-    let refundUsdCents = 0;
+    let listUsdCents = 0;
     for (const line of dto.items) {
       const item = order.items.find((i) => i.id === line.orderItemId);
       if (!item) throw new BadRequestException('Ese producto no es del pedido');
@@ -104,8 +104,10 @@ export class ReturnsService {
             : `De ${item.productName} puedes devolver como máximo ${left}`,
         );
       }
-      refundUsdCents += item.unitPriceUsdCents * line.quantity;
+      listUsdCents += item.unitPriceUsdCents * line.quantity;
     }
+    // Con combos o cupón se devuelve lo pagado, no el precio de lista.
+    const refundUsdCents = discountedShare(listUsdCents, order);
 
     try {
       const created = await this.prisma.returnRequest.create({

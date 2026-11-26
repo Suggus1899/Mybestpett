@@ -243,9 +243,10 @@ docker build -f apps/api/Dockerfile -t petbf-api .   # la etapa `migrate` aplica
 ### Envíos y devoluciones
 
 - Envío **gratis desde 25 $**; por debajo se cobra una tarifa por zona.
+- Los combos y el cupón se descuentan de los productos, nunca del envío. El envío gratis se mide con lo que se paga por los productos ya descontados.
 - Devoluciones en un máximo de **3 días** desde la entrega. El cliente elige productos y unidades y explica el motivo; solo una devolución abierta por pedido.
 - El operador aprueba o rechaza (nadie gestiona su propio pedido). Solo el administrador registra el reembolso: por el mismo método, en la misma moneda y con las tasas congeladas del pedido, e indica si el producto vuelve al inventario.
-- El envío no se reembolsa. Si se devuelve todo el pedido, queda como reembolsado.
+- El envío no se reembolsa. Si el pedido tuvo combos o cupón, se reembolsa lo pagado por cada producto (el descuento se reparte en proporción). Si se devuelve todo el pedido, queda como reembolsado.
 - El alimento abierto y los productos de higiene abiertos no se devuelven.
 
 ### Animales vivos
@@ -271,7 +272,7 @@ Una persona puede tener varios roles a la vez.
 | `CUSTOMER` | Cliente registrado; comprar exige cuenta |
 | `ADMIN` | Acceso total: cuentas, roles y tasas |
 | `ORDERS_OPERATOR` | Verifica pagos, prepara y despacha pedidos |
-| `CATALOG_MANAGER` | Productos, precios, stock, animales en venta y moderación de reseñas |
+| `CATALOG_MANAGER` | Productos, precios, stock, animales en venta, combos, cupones y moderación de reseñas |
 | `ADOPTION_COORDINATOR` | Fichas de adopción y solicitudes |
 
 ## 🛍️ Funcionalidades
@@ -291,6 +292,8 @@ Una persona puede tener varios roles a la vez.
 | **Correos al cliente** | Aviso de pedido creado, pago confirmado o rechazado, envío, entrega, cancelación y devoluciones, con bandeja de salida y reintentos | ✅ |
 | **Reseñas y valoraciones** | Solo de compras entregadas, con promedio y distribución por estrellas; el equipo de catálogo las oculta con motivo | ✅ |
 | **Recomendaciones** | "También te puede gustar": productos comprados juntos y los más vendidos de la categoría | ✅ |
+| **Combos** | Varios productos a un precio menor; el carrito descuenta cada combo completo | ✅ |
+| **Cupones** | Porcentaje (con tope) o monto fijo, vigencia, compra mínima y límites de uso total y por cliente; uno por pedido | ✅ |
 | **Reservas y adopciones** | Reserva con señal y solicitud de adopción con cuestionario | ⏳ |
 | **App móvil** | Flutter sobre la misma API: tienda, animales, carrito, checkout, pago y pedidos | 🚧 |
 

@@ -6,6 +6,7 @@ import { getCurrentUser } from '@/lib/session';
 
 const nav = [
   { href: '/productos', label: 'Productos' },
+  { href: '/combos', label: 'Combos' },
   { href: '/animales?tipo=venta', label: 'Animales' },
   { href: '/animales?tipo=adopcion', label: 'Adopción' },
 ];
