@@ -1,7 +1,8 @@
 import 'server-only';
-import { cookies } from 'next/headers';
+import { cookies, headers as requestHeaders } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { ACCESS_COOKIE, API_URL } from './config';
+import { forwardHeaders } from './forward';
 
 // Lecturas de la API desde el servidor de Next. Sin caché por ahora: precios
 // y stock deben verse al día; se cacheará con etiquetas cuando haga falta.
@@ -150,6 +151,8 @@ export interface ShippingZone {
   carrier: string;
   priceUsdCents: number;
   freeOverUsdCents: number;
+  isActive?: boolean;
+  sortOrder?: number;
 }
 
 export interface PaymentMethod {
@@ -158,6 +161,8 @@ export interface PaymentMethod {
   name: string;
   currency: Currency;
   instructions: string;
+  isActive?: boolean;
+  sortOrder?: number;
 }
 
 export type OrderStatus =
@@ -272,7 +277,7 @@ export class ApiError extends Error {
 type Params = Record<string, string | number | undefined>;
 
 async function get<T>(path: string, auth = false): Promise<T> {
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = forwardHeaders(await requestHeaders());
   if (auth) {
     const token = (await cookies()).get(ACCESS_COOKIE)?.value;
     if (token) headers.Authorization = `Bearer ${token}`;
@@ -305,6 +310,8 @@ export const api = {
   manageOrders: (params: Params) => get<Page<OrderSummary>>(`/manage/orders${qs(params)}`, true),
   manageOrder: (id: string) => get<Order>(`/manage/orders/${encodeURIComponent(id)}`, true),
   managePayments: (params: Params) => get<Page<PaymentRow>>(`/manage/payments${qs(params)}`, true),
+  manageZones: () => get<ShippingZone[]>('/manage/shipping-zones', true),
+  managePaymentMethods: () => get<PaymentMethod[]>('/manage/payment-methods', true),
   // Compra: con la sesión del cliente.
   cart: () => get<Cart>('/cart', true),
   addresses: () => get<Address[]>('/addresses', true),

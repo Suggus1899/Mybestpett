@@ -25,6 +25,15 @@ export const envSchema = z.object({
   AUTH_THROTTLE_LIMIT: z.coerce.number().int().min(1).max(1000).default(10),
   // Peticiones por minuto y por IP en el resto de rutas.
   THROTTLE_LIMIT: z.coerce.number().int().min(1).max(100_000).default(120),
+  // Secreto compartido con la web para aceptar la IP real que reenvía.
+  // Vacío equivale a no configurado.
+  WEB_PROXY_SECRET: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z
+      .string()
+      .min(32, 'WEB_PROXY_SECRET debe tener al menos 32 caracteres')
+      .optional(),
+  ),
 });
 
 export type Env = z.infer<typeof envSchema>;

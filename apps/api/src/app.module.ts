@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
-import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
 import { AddressesModule } from './addresses/addresses.module.js';
 import { AnimalsModule } from './animals/animals.module.js';
 import { AuditModule } from './audit/audit.module.js';
@@ -10,6 +10,7 @@ import { JwtAuthGuard } from './auth/jwt-auth.guard.js';
 import { RolesGuard } from './auth/roles.guard.js';
 import { CatalogModule } from './catalog/catalog.module.js';
 import { CartModule } from './cart/cart.module.js';
+import { ClientIpThrottlerGuard } from './common/client-ip.js';
 import { PrismaExceptionFilter } from './common/prisma-exception.filter.js';
 import { validateEnv } from './config/env.js';
 import { HealthController } from './health/health.controller.js';
@@ -45,7 +46,7 @@ import { UsersModule } from './users/users.module.js';
   controllers: [HealthController],
   providers: [
     // Orden de ejecución: límite de peticiones, sesión y luego rol.
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useClass: ClientIpThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_FILTER, useClass: PrismaExceptionFilter },

@@ -5,6 +5,7 @@ import {
   REFRESH_COOKIE,
   REFRESH_MAX_AGE,
 } from './lib/config';
+import { forwardHeaders } from './lib/forward';
 
 const secure = process.env.NODE_ENV === 'production';
 
@@ -26,7 +27,7 @@ export async function proxy(request: NextRequest) {
   try {
     const res = await fetch(`${API_URL}/auth/refresh`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...forwardHeaders(request.headers), 'Content-Type': 'application/json' },
       body: JSON.stringify({ refreshToken }),
       cache: 'no-store',
     });

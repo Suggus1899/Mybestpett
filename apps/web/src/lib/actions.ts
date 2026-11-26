@@ -1,8 +1,9 @@
 'use server';
 
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { API_URL, REFRESH_COOKIE } from './config';
+import { forwardHeaders } from './forward';
 import { clearSession, saveSession, type AuthTokens } from './session';
 
 export interface FormState {
@@ -37,7 +38,7 @@ function safeNext(value: string) {
 async function post(path: string, body: unknown) {
   return fetch(`${API_URL}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { ...forwardHeaders(await headers()), 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
     cache: 'no-store',
   });
