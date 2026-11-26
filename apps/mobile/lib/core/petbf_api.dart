@@ -1,7 +1,10 @@
+import 'dart:typed_data';
+
 import '../models/catalog.dart';
 import '../models/json.dart';
 import '../models/shop.dart';
 import 'api_client.dart';
+import 'proof.dart';
 import 'validators.dart';
 
 /// Filtros del catálogo (GET /products).
@@ -169,6 +172,12 @@ class PetbfApi {
     asJson(await client.get('/animals/${Uri.encodeComponent(slug)}')),
   );
 
+  /// Especies de animales vivos que la tienda acepta.
+  Future<List<Species>> animalSpecies() async => asList(
+    await client.get('/animal-species'),
+    (json) => speciesFromApi(json.str('species')),
+  );
+
   Future<Rates> rates() async =>
       Rates.fromJson(asJson(await client.get('/exchange-rates/current')));
 
@@ -281,4 +290,50 @@ class PetbfApi {
           ),
         ),
       );
+
+  /// Adjunta o reemplaza el comprobante de un pago todavía en revisión.
+  /// La API responde solo con los datos del comprobante guardado.
+  Future<ProofInfo> attachProof(
+    String orderId,
+    String paymentId,
+    PickedProof proof,
+  ) async => ProofInfo.fromJson(
+    asJson(
+      await client.upload(
+        'PUT',
+        '/orders/${Uri.encodeComponent(orderId)}/payments/'
+            '${Uri.encodeComponent(paymentId)}/proof',
+        UploadFile(
+          field: 'file',
+          bytes: proof.bytes,
+          filename: proof.name,
+          contentType: proof.contentType,
+        ),
+      ),
+    ),
+  );
+
+  /// El archivo del comprobante (solo lo ve el dueño del pedido y el equipo).
+  Future<Uint8List> proofFile(String orderId, String paymentId) =>
+      client.getBytes(
+        '/orders/${Uri.encodeComponent(orderId)}/payments/'
+        '${Uri.encodeComponent(paymentId)}/proof',
+      );
+
+  /// Pide la devolución de productos de un pedido entregado.
+  Future<Order> requestReturn(
+    String orderId, {
+    required String reason,
+    required List<ReturnLine> items,
+  }) async => Order.fromJson(
+    asJson(
+      await client.post(
+        '/orders/${Uri.encodeComponent(orderId)}/returns',
+        body: {
+          'reason': reason.trim(),
+          'items': [for (final i in items) i.toJson()],
+        },
+      ),
+    ),
+  );
 }

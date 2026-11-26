@@ -1,3 +1,4 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
 import '../../core/petbf_api.dart';
@@ -8,19 +9,21 @@ import '../../widgets/common.dart';
 import '../../widgets/paged_grid.dart';
 
 /// Animales en venta y en adopción, en dos pestañas.
-class AnimalsScreen extends StatefulWidget {
+class AnimalsScreen extends ConsumerStatefulWidget {
   const AnimalsScreen({super.key, this.initialTab = 0});
   final int initialTab;
 
   @override
-  State<AnimalsScreen> createState() => _AnimalsScreenState();
+  ConsumerState<AnimalsScreen> createState() => _AnimalsScreenState();
 }
 
-class _AnimalsScreenState extends State<AnimalsScreen> {
+class _AnimalsScreenState extends ConsumerState<AnimalsScreen> {
   Species? _species;
 
   @override
   Widget build(BuildContext context) {
+    // Solo las especies que la tienda acepta (sin conexión, todas).
+    final species = ref.watch(animalSpeciesProvider).value ?? Species.values;
     return DefaultTabController(
       length: 2,
       initialIndex: widget.initialTab,
@@ -47,7 +50,7 @@ class _AnimalsScreenState extends State<AnimalsScreen> {
                     selected: _species == null,
                     onSelected: (_) => setState(() => _species = null),
                   ),
-                  for (final s in Species.values) ...[
+                  for (final s in species) ...[
                     const SizedBox(width: 8),
                     ChoiceChip(
                       label: Text(s.label),

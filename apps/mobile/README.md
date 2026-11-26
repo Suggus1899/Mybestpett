@@ -11,10 +11,11 @@ BCV, compra solo con cuenta, pago reportado y verificado por el equipo.
 | Inicio | Buscador, ofertas, tasa BCV del día, especies, novedades y animales que buscan hogar |
 | Tienda | Búsqueda (2 a 80 letras), filtros por categoría, especie y ofertas, orden, scroll infinito |
 | Producto | Galería, presentaciones, existencia, cantidad (máx. 20), si admite devolución |
-| Animales | Venta y adopción por separado, ficha con edad, vacunas y esterilización |
+| Animales | Venta y adopción por separado, solo las especies que la tienda acepta, ficha con edad, vacunas y esterilización |
 | Carrito | Cambiar cantidades, avisos de stock, envío gratis desde 25 $ |
 | Checkout | Dirección (o crear una), zonas que llegan a ese estado, método de pago con el monto estimado en su moneda, términos |
-| Pedido | Instrucciones de pago, plazo de 2 horas con cuenta regresiva, reportar pago, cancelar, guía de envío e historial |
+| Pedido | Instrucciones de pago, plazo de 2 horas con cuenta regresiva, reportar pago con comprobante (JPG, PNG, WebP o PDF de hasta 5 MB), cancelar, guía de envío e historial |
+| Devoluciones | Hasta 3 días después de la entrega, por unidades y con motivo; alimento e higiene quedan fuera; estado y reembolso en el pedido |
 | Cuenta | Entrar, crear cuenta, direcciones (máx. 10) y cerrar sesión |
 
 La solicitud de adopción todavía no tiene endpoint en la API; la ficha muestra
@@ -55,6 +56,7 @@ lib/
 | Renovación de token en vuelo único | La API rota el refresh token y revoca la sesión si se reutiliza: si varias peticiones reciben 401 a la vez, solo una renueva |
 | Dinero en centavos y `BigInt` | Los montos en Bs y € se calculan igual que la API (redondeo a la mitad hacia arriba), sin errores de `double` |
 | Hora de Caracas fija (UTC-4) | Venezuela no cambia de horario; fechas y plazos se ven igual en cualquier teléfono |
+| El comprobante se valida por su contenido | Igual que la API: se leen los primeros bytes, no la extensión, y se rechaza antes de subir si pesa más de 5 MB |
 | Fuentes incluidas | Fredoka y Nunito van en `assets/fonts` (licencia OFL), sin descargarlas al abrir |
 | Tráfico sin cifrar solo en debug | Android lo permite solo hacia `10.0.2.2` y `localhost`; iOS solo en red local |
 
@@ -65,13 +67,13 @@ Sin conexión, la sesión guardada no se borra y cada pantalla ofrece reintentar
 
 ```bash
 flutter analyze
-flutter test                     # 168 pruebas, sin red
+flutter test                     # 204 pruebas, sin red
 ```
 
 - `test/core`: dinero, formatos, validaciones, cliente HTTP (renovación, 401, errores) y lectura del JSON.
 - `test/flows`: la app completa en un teléfono de 390×844 sobre una API falsa en memoria
   (`test/support/fake_backend.dart`): entrar, registro, catálogo, carrito, checkout,
-  pedidos, reporte de pago y direcciones, con sus validaciones y errores.
+  pedidos, reporte de pago, comprobantes, devoluciones y direcciones, con sus validaciones y errores.
 
 Prueba de contrato contra la API real (la corre CI con datos de ejemplo):
 
@@ -81,7 +83,8 @@ AUTH_THROTTLE_LIMIT=1000 pnpm --filter api start:prod
 CONTRACT_API_URL=http://localhost:3001/v1 flutter test contract
 ```
 
-Crea una cuenta nueva, compra, reporta el pago y cancela un segundo pedido, y
+Crea una cuenta nueva, compra, reporta el pago, sube y descarga el comprobante,
+intenta devolver un pedido sin entregar y cancela un segundo pedido. También
 comprueba que el monto en Bs que calcula la app es el mismo que fija la API.
 
 CI (`.github/workflows/ci.yml`, job `mobile`) corre formato, análisis, pruebas,

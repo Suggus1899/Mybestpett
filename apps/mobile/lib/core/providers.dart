@@ -7,6 +7,7 @@ import '../models/json.dart';
 import '../models/shop.dart';
 import 'api_client.dart';
 import 'petbf_api.dart';
+import 'proof.dart';
 
 /// Reloj de la app; las pruebas lo fijan para controlar plazos y edades.
 final clockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
@@ -120,6 +121,21 @@ final productProvider = FutureProvider.autoDispose
     .family<ProductDetail, String>(
       (ref, slug) => ref.watch(apiProvider).product(slug),
     );
+
+/// Especies con animales en la tienda; si falla, se muestran todas.
+final animalSpeciesProvider = FutureProvider<List<Species>>((ref) async {
+  try {
+    return await ref.watch(apiProvider).animalSpecies();
+  } on ApiException catch (e) {
+    if (e.isNetwork) rethrow;
+    return Species.values;
+  }
+});
+
+/// Selector de comprobantes; las pruebas lo cambian por uno falso.
+final proofPickerProvider = Provider<ProofPicker>(
+  (ref) => const SystemProofPicker(),
+);
 
 final animalProvider = FutureProvider.autoDispose.family<Animal, String>(
   (ref, slug) => ref.watch(apiProvider).animal(slug),

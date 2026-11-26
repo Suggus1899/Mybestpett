@@ -11,7 +11,9 @@ import '../../core/providers.dart';
 import '../../core/theme.dart';
 import '../../models/shop.dart';
 import '../../widgets/common.dart';
+import 'payment_proof.dart';
 import 'report_payment_form.dart';
+import 'returns.dart';
 
 class OrderScreen extends ConsumerWidget {
   const OrderScreen({super.key, required this.id});
@@ -72,7 +74,7 @@ class _OrderViewState extends ConsumerState<OrderView> {
   }
 
   Future<void> _report() async {
-    final reported = await showModalBottomSheet<bool>(
+    final message = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -91,19 +93,14 @@ class _OrderViewState extends ConsumerState<OrderView> {
               const SizedBox(height: 12),
               ReportPaymentForm(
                 order: widget.order,
-                onReported: () => Navigator.pop(sheet, true),
+                onReported: (message) => Navigator.pop(sheet, message),
               ),
             ],
           ),
         ),
       ),
     );
-    if (reported == true && mounted) {
-      showMessage(
-        context,
-        'Recibimos tu reporte. Te avisaremos cuando el equipo verifique el pago.',
-      );
-    }
+    if (message != null && mounted) showMessage(context, message);
   }
 
   Future<void> _cancel() async {
@@ -256,6 +253,10 @@ class _OrderViewState extends ConsumerState<OrderView> {
           ),
           const SizedBox(height: 16),
         ],
+        if (o.canRequestReturn(ref.read(clockProvider)())) ...[
+          ReturnPanel(order: o),
+          const SizedBox(height: 16),
+        ],
         if (o.trackingCode != null) ...[
           Panel(
             color: PetbfColors.petbfSoft,
@@ -340,20 +341,11 @@ class _OrderViewState extends ConsumerState<OrderView> {
           const SizedBox(height: 20),
           Text('Pagos reportados', style: text.titleMedium),
           const SizedBox(height: 6),
-          for (final p in o.payments)
-            ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: Text(
-                'Ref. ${p.reference} · ${formatMoney(p.amount, p.currency)}',
-              ),
-              subtitle: Text(
-                [
-                  formatDateTime(p.paidAt),
-                  p.status.label,
-                  if (p.rejectionReason != null) p.rejectionReason!,
-                ].join(' · '),
-              ),
-            ),
+          for (final p in o.payments) PaymentTile(order: o, payment: p),
+        ],
+        if (o.returns.isNotEmpty) ...[
+          const SizedBox(height: 20),
+          ReturnsList(order: o),
         ],
         const SizedBox(height: 20),
         Text('Historial', style: text.titleMedium),

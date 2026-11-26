@@ -2,14 +2,20 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../../core/api_client.dart';
 import '../../core/format.dart';
 import '../../core/money.dart';
+import '../../core/proof.dart';
 import '../../core/providers.dart';
 import '../../core/theme.dart';
 import '../../core/validators.dart';
 import '../../models/shop.dart';
 import '../../widgets/common.dart';
 import '../account/auth_screens.dart';
+import 'payment_proof.dart';
+
+const reportedMessage =
+    'Recibimos tu reporte. Te avisaremos cuando el equipo verifique el pago.';
 
 /// Reporte del pago: el cliente dice qué pagó y el equipo lo verifica con el banco.
 class ReportPaymentForm extends ConsumerStatefulWidget {
@@ -19,7 +25,9 @@ class ReportPaymentForm extends ConsumerStatefulWidget {
     required this.onReported,
   });
   final Order order;
-  final VoidCallback onReported;
+
+  /// Recibe el mensaje para la persona (avisa si el comprobante no subió).
+  final ValueChanged<String> onReported;
 
   @override
   ConsumerState<ReportPaymentForm> createState() => _ReportPaymentFormState();
@@ -33,6 +41,7 @@ class _ReportPaymentFormState extends ConsumerState<ReportPaymentForm> {
   );
   final _bank = TextEditingController();
   late DateTime _paidAt = _now();
+  PickedProof? _proof;
   bool _sending = false;
   String? _error;
   String? _dateError;
@@ -107,20 +116,34 @@ class _ReportPaymentFormState extends ConsumerState<ReportPaymentForm> {
 
     setState(() => _sending = true);
     try {
-      await ref
-          .read(apiProvider)
-          .reportPayment(
-            widget.order.id,
-            PaymentInput(
-              reference: normalizeReference(_reference.text),
-              amount: normalizeAmount(_amount.text)!,
-              paidAt: _paidAt,
-              originBank: _bank.text,
-            ),
-          );
+      final api = ref.read(apiProvider);
+      final order = await api.reportPayment(
+        widget.order.id,
+        PaymentInput(
+          reference: normalizeReference(_reference.text),
+          amount: normalizeAmount(_amount.text)!,
+          paidAt: _paidAt,
+          originBank: _bank.text,
+        ),
+      );
+      var message = reportedMessage;
+      final proof = _proof;
+      final payment = order.payments
+          .where((p) => p.status == PaymentStatus.reported)
+          .firstOrNull;
+      if (proof != null && payment != null) {
+        try {
+          await api.attachProof(order.id, payment.id, proof);
+        } on ApiException catch (e) {
+          // El pago ya quedó reportado: solo falta el archivo.
+          message =
+              'Recibimos tu reporte, pero el comprobante no subió: '
+              '${e.message} Puedes adjuntarlo desde el pedido.';
+        }
+      }
       ref.invalidate(orderProvider(widget.order.id));
       ref.invalidate(ordersProvider);
-      widget.onReported();
+      widget.onReported(message);
     } catch (e) {
       if (mounted) setState(() => _error = messageOf(e));
     } finally {
@@ -222,6 +245,49 @@ class _ReportPaymentFormState extends ConsumerState<ReportPaymentForm> {
             Text(
               _dateError!,
               style: const TextStyle(color: PetbfColors.danger),
+            ),
+          const SizedBox(height: 14),
+          Text(
+            'Comprobante (opcional)',
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+          const Text(
+            'Captura o PDF del pago, hasta 5 MB. Ayuda a verificarlo más rápido.',
+            style: TextStyle(fontSize: 13, color: PetbfColors.slate),
+          ),
+          const SizedBox(height: 6),
+          if (_proof == null)
+            OutlinedButton.icon(
+              onPressed: _sending
+                  ? null
+                  : () async {
+                      final proof = await pickProof(context, ref);
+                      if (proof != null && mounted) {
+                        setState(() => _proof = proof);
+                      }
+                    },
+              icon: const Icon(Icons.attach_file, size: 18),
+              label: const Text('Adjuntar comprobante'),
+            )
+          else
+            Row(
+              children: [
+                const Icon(Icons.description_outlined, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '${_proof!.name} · ${formatBytes(_proof!.bytes.length)}',
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Quitar comprobante',
+                  onPressed: _sending
+                      ? null
+                      : () => setState(() => _proof = null),
+                  icon: const Icon(Icons.close),
+                ),
+              ],
             ),
           const SizedBox(height: 20),
           FilledButton(
