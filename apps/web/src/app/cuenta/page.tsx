@@ -36,10 +36,15 @@ async function Account() {
         <dt className="font-bold">Tipo de cuenta</dt>
         <dd>{user.roles.map((role) => roleLabel[role]).join(', ')}</dd>
       </dl>
-      <p className="mb-6">
+      <p className="mb-6 flex flex-wrap gap-x-6 gap-y-2">
         <Link href="/pedidos" className="font-bold text-petbf hover:underline">
           Ver mis pedidos
         </Link>
+        {user.twoFactor.available && (
+          <Link href="/cuenta/seguridad" className="font-bold text-petbf hover:underline">
+            Verificación en dos pasos: {user.twoFactor.enabled ? 'activa' : 'sin activar'}
+          </Link>
+        )}
       </p>
       <form action={logoutAction}>
         <Button type="submit" variant="secondary">

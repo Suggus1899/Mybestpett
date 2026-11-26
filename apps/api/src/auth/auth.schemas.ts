@@ -38,6 +38,32 @@ export const refreshSchema = z.object({
   refreshToken: z.string().min(1).max(200),
 });
 
+// Código de 6 dígitos de la app, o uno de recuperación (XXXX-XXXX).
+const code = z
+  .string('Escribe el código')
+  .trim()
+  .regex(/^(\d{3}\s?\d{3}|[A-Za-z2-7]{4}-?[A-Za-z2-7]{4})$/, 'Código inválido');
+
+export const enableTwoFactorSchema = z.object({
+  code: z
+    .string('Escribe el código')
+    .trim()
+    .regex(/^\d{3}\s?\d{3}$/, 'Escribe los 6 dígitos de tu app'),
+});
+
+export const disableTwoFactorSchema = z.object({
+  password: z.string().min(1, 'Escribe tu contraseña').max(128),
+  code,
+});
+
+export const twoFactorLoginSchema = z.object({
+  challengeToken: z.string().min(1).max(1000),
+  code,
+});
+
 export type RegisterDto = z.infer<typeof registerSchema>;
 export type LoginDto = z.infer<typeof loginSchema>;
 export type RefreshDto = z.infer<typeof refreshSchema>;
+export type EnableTwoFactorDto = z.infer<typeof enableTwoFactorSchema>;
+export type DisableTwoFactorDto = z.infer<typeof disableTwoFactorSchema>;
+export type TwoFactorLoginDto = z.infer<typeof twoFactorLoginSchema>;

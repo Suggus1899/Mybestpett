@@ -11,7 +11,8 @@ export default defineConfig({
     globals: true,
     root: './',
     include: ['**/*.e2e-spec.ts'],
-    env: { ...fileEnv, NODE_ENV: 'test' },
+    // La verificación en dos pasos del equipo se prueba en su propio archivo.
+    env: { ...fileEnv, NODE_ENV: 'test', STAFF_2FA_REQUIRED: 'false' },
     // Comparten una base de datos: un archivo a la vez.
     fileParallelism: false,
   },

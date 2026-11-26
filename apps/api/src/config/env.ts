@@ -26,6 +26,21 @@ export const envSchema = z
     AUTH_THROTTLE_LIMIT: z.coerce.number().int().min(1).max(1000).default(10),
     // Peticiones por minuto y por IP en el resto de rutas.
     THROTTLE_LIMIT: z.coerce.number().int().min(1).max(100_000).default(120),
+    // El equipo debe entrar con verificación en dos pasos para usar el panel.
+    // Solo se apaga en pruebas o en desarrollo.
+    STAFF_2FA_REQUIRED: z
+      .enum(['true', 'false'], 'STAFF_2FA_REQUIRED debe ser true o false')
+      .default('true')
+      .transform((v) => v === 'true'),
+    // Clave para cifrar los secretos de 2FA en la base. Si falta, se deriva de
+    // JWT_ACCESS_SECRET (cambiar ese secreto obligaría a configurar 2FA de nuevo).
+    TOTP_ENCRYPTION_KEY: z.preprocess(
+      (v) => (v === '' ? undefined : v),
+      z
+        .string()
+        .min(32, 'TOTP_ENCRYPTION_KEY debe tener al menos 32 caracteres')
+        .optional(),
+    ),
     // Secreto compartido con la web para aceptar la IP real que reenvía.
     // Vacío equivale a no configurado.
     WEB_PROXY_SECRET: z.preprocess(

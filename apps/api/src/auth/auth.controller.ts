@@ -2,13 +2,20 @@ import { Body, Controller, Get, HttpCode, Post } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service.js';
 import {
+  disableTwoFactorSchema,
+  enableTwoFactorSchema,
   loginSchema,
   refreshSchema,
   registerSchema,
+  twoFactorLoginSchema,
+  type DisableTwoFactorDto,
+  type EnableTwoFactorDto,
   type LoginDto,
   type RefreshDto,
   type RegisterDto,
+  type TwoFactorLoginDto,
 } from './auth.schemas.js';
+import { TwoFactorService } from './two-factor.service.js';
 import type { AuthUser, RequestMeta } from './auth.types.js';
 import { CurrentUser, Public } from './decorators.js';
 import { ReqMeta } from './request-meta.js';
@@ -24,7 +31,10 @@ const strict = {
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly auth: AuthService) {}
+  constructor(
+    private readonly auth: AuthService,
+    private readonly twoFactor: TwoFactorService,
+  ) {}
 
   @Public()
   @Throttle(strict)
@@ -64,8 +74,47 @@ export class AuthController {
     return this.auth.logout(dto);
   }
 
+  // ---------- Verificación en dos pasos ----------
+
+  @Public()
+  @Throttle(strict)
+  @HttpCode(200)
+  @Post('2fa/login')
+  loginWithCode(
+    @Body({ schema: twoFactorLoginSchema }) dto: TwoFactorLoginDto,
+    @ReqMeta() meta: RequestMeta,
+  ) {
+    return this.twoFactor.login(dto.challengeToken, dto.code, meta);
+  }
+
+  @HttpCode(200)
+  @Post('2fa/setup')
+  setupTwoFactor(@CurrentUser() user: AuthUser) {
+    return this.twoFactor.setup(user);
+  }
+
+  @Throttle(strict)
+  @HttpCode(200)
+  @Post('2fa/enable')
+  enableTwoFactor(
+    @CurrentUser() user: AuthUser,
+    @Body({ schema: enableTwoFactorSchema }) dto: EnableTwoFactorDto,
+  ) {
+    return this.twoFactor.enable(user, dto.code.replace(/\s/g, ''));
+  }
+
+  @Throttle(strict)
+  @HttpCode(204)
+  @Post('2fa/disable')
+  disableTwoFactor(
+    @CurrentUser() user: AuthUser,
+    @Body({ schema: disableTwoFactorSchema }) dto: DisableTwoFactorDto,
+  ) {
+    return this.twoFactor.disable(user, dto.password, dto.code);
+  }
+
   @Get('me')
   me(@CurrentUser() user: AuthUser) {
-    return this.auth.me(user.id);
+    return this.auth.me(user);
   }
 }

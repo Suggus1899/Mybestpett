@@ -286,7 +286,7 @@ Una persona puede tener varios roles a la vez.
 | **Inventario** | Panel con stock por presentación, agotados, stock bajo y valor total | ✅ |
 | **Auditoría** | Registro de quién hizo cada acción sensible | ✅ |
 | **Carrito y pedidos** | Checkout, pago reportado, verificación del equipo y despacho | 🚧 |
-| **Verificación en dos pasos** | Obligatoria para el equipo | 🚧 |
+| **Verificación en dos pasos** | TOTP obligatoria para el equipo en el panel, con códigos de recuperación y restablecimiento por el administrador | ✅ |
 | **Devoluciones** | Solicitud dentro de 3 días, revisión del operador y reembolso del administrador | ✅ |
 | **Correos al cliente** | Aviso de pedido creado, pago confirmado o rechazado, envío, entrega, cancelación y devoluciones, con bandeja de salida y reintentos | ✅ |
 | **Reservas y adopciones** | Reserva con señal y solicitud de adopción con cuestionario | ⏳ |
@@ -309,6 +309,8 @@ Una persona puede tener varios roles a la vez.
 | `AUTH_THROTTLE_LIMIT` | ❌ | `10` | Intentos por minuto en registro y login |
 | `THROTTLE_LIMIT` | ❌ | `120` | Peticiones por minuto y por IP en el resto de rutas |
 | `WEB_PROXY_SECRET` | ✅ prod | — | Secreto compartido con la web para aceptar la IP real del visitante (32+ caracteres) |
+| `STAFF_2FA_REQUIRED` | ❌ | `true` | Exige la verificación en dos pasos al equipo para usar el panel; `false` solo en pruebas |
+| `TOTP_ENCRYPTION_KEY` | Recomendada | Derivada de `JWT_ACCESS_SECRET` | Clave (32+ caracteres) para cifrar los secretos de 2FA en la base |
 | `EMAIL_PROVIDER` | ❌ | `log` | `log` escribe los correos en el registro; `resend` los envía con Resend |
 | `RESEND_API_KEY` | Con `resend` | — | Clave de la API de Resend |
 | `EMAIL_FROM` | ❌ | `Petbf <no-responder@petbf.local>` | Remitente de los correos (dominio verificado en Resend) |
