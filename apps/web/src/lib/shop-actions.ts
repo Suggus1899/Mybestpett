@@ -1,9 +1,10 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { ACCESS_COOKIE, API_URL } from './config';
+import { forwardHeaders } from './forward';
 
 // Acciones de compra y del panel. Todas llaman a la API con la sesión de la
 // persona: la API vuelve a validar permisos, datos y estado en cada una.
@@ -49,7 +50,11 @@ async function call<T>(
   try {
     res = await fetch(`${API_URL}${path}`, {
       method,
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      headers: {
+        ...forwardHeaders(await headers()),
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
       body: body === undefined ? undefined : JSON.stringify(body),
       cache: 'no-store',
     });
@@ -186,4 +191,51 @@ export async function cancelOrderManageAction(_prev: ActionState, formData: Form
   if (!result.ok) return { error: result.error, fields: { reason } };
   revalidatePath('/admin', 'layout');
   return { ok: 'Pedido cancelado' };
+}
+
+// ---------- Panel: ajustes de la tienda (ADMIN) ----------
+
+// "12,50" o "12.50" en dólares → 1250 céntimos. Devuelve NaN si no es válido.
+function dollarsToCents(value: string) {
+  const normalized = value.replace(',', '.');
+  if (!/^\d{1,6}(\.\d{1,2})?$/.test(normalized)) return Number.NaN;
+  return Math.round(Number(normalized) * 100);
+}
+
+export async function updatePaymentMethodAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const id = text(formData, 'id');
+  const body = {
+    name: text(formData, 'name'),
+    instructions: text(formData, 'instructions'),
+    isActive: formData.get('isActive') === 'on',
+    sortOrder: Number(text(formData, 'sortOrder') || '0'),
+  };
+  const result = await call('PATCH', `/manage/payment-methods/${encodeURIComponent(id)}`, body, '/admin/ajustes');
+  if (!result.ok) return { error: result.error };
+  revalidatePath('/admin/ajustes');
+  return { ok: 'Método guardado' };
+}
+
+export async function saveZoneAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const id = text(formData, 'id');
+  const price = dollarsToCents(text(formData, 'price'));
+  const freeOver = dollarsToCents(text(formData, 'freeOver'));
+  if (Number.isNaN(price) || Number.isNaN(freeOver)) {
+    return { error: 'Usa montos en dólares con hasta 2 decimales, por ejemplo 3,50' };
+  }
+  const body = {
+    name: text(formData, 'name'),
+    carrier: text(formData, 'carrier'),
+    states: formData.getAll('states').filter((v): v is string => typeof v === 'string'),
+    priceUsdCents: price,
+    freeOverUsdCents: freeOver,
+    isActive: formData.get('isActive') === 'on',
+    sortOrder: Number(text(formData, 'sortOrder') || '0'),
+  };
+  const result = id
+    ? await call('PATCH', `/manage/shipping-zones/${encodeURIComponent(id)}`, body, '/admin/ajustes')
+    : await call('POST', '/manage/shipping-zones', body, '/admin/ajustes');
+  if (!result.ok) return { error: result.error };
+  revalidatePath('/admin/ajustes');
+  return { ok: id ? 'Zona guardada' : 'Zona creada' };
 }

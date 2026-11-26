@@ -11,6 +11,7 @@ const links = [
   { href: '/admin/pagos', label: 'Pagos' },
   { href: '/admin/pedidos', label: 'Pedidos' },
   { href: '/admin/inventario', label: 'Inventario' },
+  { href: '/admin/ajustes', label: 'Ajustes' },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

@@ -289,6 +289,8 @@ Una persona puede tener varios roles a la vez.
 | `JWT_ACCESS_TTL_SECONDS` | ❌ | `900` | Duración del access token |
 | `REFRESH_TOKEN_TTL_DAYS` | ❌ | `30` | Duración de la sesión |
 | `AUTH_THROTTLE_LIMIT` | ❌ | `10` | Intentos por minuto en registro y login |
+| `THROTTLE_LIMIT` | ❌ | `120` | Peticiones por minuto y por IP en el resto de rutas |
+| `WEB_PROXY_SECRET` | ✅ prod | — | Secreto compartido con la web para aceptar la IP real del visitante (32+ caracteres) |
 | `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` | ❌ | — | Cuenta de administrador que crea el seed (contraseña de 12+ caracteres) |
 | `SEED_DEMO` | ❌ | `false` | Añade datos de ejemplo; no se permite en producción |
 
@@ -297,6 +299,7 @@ Una persona puede tener varios roles a la vez.
 | Variable | Requerida | Default | Descripción |
 |----------|-----------|---------|-------------|
 | `API_URL` | ✅ | — | URL de la API; solo la usa el servidor de Next, nunca el navegador |
+| `WEB_PROXY_SECRET` | ✅ prod | — | El mismo valor que en la API; la web reenvía la IP real con él |
 
 ### Ejemplo `.env`
 

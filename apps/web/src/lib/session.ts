@@ -1,5 +1,5 @@
 import 'server-only';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { cache } from 'react';
 import {
   ACCESS_COOKIE,
@@ -7,6 +7,7 @@ import {
   REFRESH_COOKIE,
   REFRESH_MAX_AGE,
 } from './config';
+import { forwardHeaders } from './forward';
 
 // Los tokens viven en cookies httpOnly: el JavaScript del navegador no puede
 // leerlos, lo que protege la sesión si alguna vez hay un fallo de XSS.
@@ -70,7 +71,7 @@ export const getCurrentUser = cache(async (): Promise<SessionUser | null> => {
   const token = (await cookies()).get(ACCESS_COOKIE)?.value;
   if (!token) return null;
   const res = await fetch(`${API_URL}/auth/me`, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { ...forwardHeaders(await headers()), Authorization: `Bearer ${token}` },
     cache: 'no-store',
   });
   if (!res.ok) return null;

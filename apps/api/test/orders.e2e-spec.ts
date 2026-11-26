@@ -720,7 +720,9 @@ describe('Carrito, pedidos y pagos (e2e)', () => {
         checkout(),
         checkout({ addressId: otherAddress }, other),
       ]);
-      expect(results.map((r) => r.status).sort((a, b) => a - b)).toEqual([201, 409]);
+      expect(results.map((r) => r.status).sort((a, b) => a - b)).toEqual([
+        201, 409,
+      ]);
       expect(await stockOf(variant.last)).toBe(0);
       expect(await prisma.order.count()).toBe(1);
     });
@@ -728,7 +730,9 @@ describe('Carrito, pedidos y pagos (e2e)', () => {
     it('enviar el checkout dos veces seguidas crea un solo pedido', async () => {
       await addToCart(variant.cheap, 1).expect(201);
       const results = await Promise.all([checkout(), checkout()]);
-      expect(results.map((r) => r.status).sort((a, b) => a - b)).toEqual([201, 400]);
+      expect(results.map((r) => r.status).sort((a, b) => a - b)).toEqual([
+        201, 400,
+      ]);
       expect(await stockOf(variant.cheap)).toBe(9);
     });
   });
@@ -1072,7 +1076,9 @@ describe('Carrito, pedidos y pagos (e2e)', () => {
     async function paidOrder() {
       const order = await placeOrder();
       await api()
-        .post(`/v1/manage/payments/${await reportedPayment(order.id, `PAID-${order.number}`)}/verify`)
+        .post(
+          `/v1/manage/payments/${await reportedPayment(order.id, `PAID-${order.number}`)}/verify`,
+        )
         .set(auth(operator))
         .expect(201);
       return order.id as string;
