@@ -1,5 +1,10 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { Suspense } from 'react';
+import { Button } from '@/components/ui';
+import { logoutAction } from '@/lib/actions';
+import { isStaff } from '@/lib/guards';
+import { getCurrentUser } from '@/lib/session';
 
 export const metadata: Metadata = {
   title: { default: 'Panel', template: '%s · Panel Petbf' },
@@ -14,6 +19,33 @@ const links = [
   { href: '/admin/inventario', label: 'Inventario' },
   { href: '/admin/ajustes', label: 'Ajustes' },
 ];
+
+// El equipo usa el panel solo con una sesión que pasó la verificación en dos
+// pasos. La API lo exige igual en cada petición; esto solo explica qué hacer.
+async function TwoFactorGate({ children }: { children: React.ReactNode }) {
+  const user = await getCurrentUser();
+  if (!user || !isStaff(user) || !user.twoFactor.required || user.twoFactor.verified) return children;
+  return (
+    <div role="alert" className="flex flex-col gap-4 rounded-[var(--radius-card)] border border-line bg-white p-8">
+      <h1 className="text-2xl">Falta la verificación en dos pasos</h1>
+      {user.twoFactor.enabled ? (
+        <>
+          <p>Esta sesión entró sin el código de tu app. Cierra sesión y vuelve a entrar con el código.</p>
+          <form action={logoutAction}>
+            <Button type="submit">Cerrar sesión</Button>
+          </form>
+        </>
+      ) : (
+        <>
+          <p>Para usar el panel, actívala en tu cuenta. Solo toma un minuto con una app de autenticación.</p>
+          <Link href="/cuenta/seguridad" className="font-bold text-petbf hover:underline">
+            Activar verificación en dos pasos
+          </Link>
+        </>
+      )}
+    </div>
+  );
+}
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -30,7 +62,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
           </Link>
         ))}
       </nav>
-      {children}
+      <Suspense fallback={<p className="text-slate">Cargando…</p>}>
+        <TwoFactorGate>{children}</TwoFactorGate>
+      </Suspense>
     </div>
   );
 }

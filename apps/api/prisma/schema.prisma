@@ -36,6 +36,16 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  // Verificación en dos pasos (TOTP). Los secretos van cifrados con AES-GCM
+  // y los códigos de recuperación, como SHA-256.
+  totpSecret        String?
+  totpPendingSecret String? // generado en la configuración, aún sin confirmar
+  totpEnabledAt     DateTime?
+  totpLastStep      Int? // último paso usado: un código no sirve dos veces
+  totpFailures      Int       @default(0)
+  totpLockedUntil   DateTime?
+  recoveryCodes     String[]  @default([])
+
   roles            UserRole[]           @relation("UserRoles")
   rolesGranted     UserRole[]           @relation("RolesGranted")
   sessions         Session[]
@@ -75,6 +85,8 @@ model Session {
   ip               String?
   expiresAt        DateTime
   revokedAt        DateTime?
+  // true si la sesión pasó la verificación en dos pasos.
+  mfa              Boolean   @default(false)
   createdAt        DateTime  @default(now())
   lastUsedAt       DateTime  @default(now())
 

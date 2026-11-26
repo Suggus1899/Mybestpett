@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useActionState } from 'react';
-import { loginAction, registerAction, type FormState } from '@/lib/actions';
+import { loginAction, registerAction, twoFactorLoginAction, type FormState } from '@/lib/actions';
 import { Button, Field } from './ui';
 
 function ErrorBox({ message }: { message?: string }) {
@@ -16,6 +16,7 @@ function ErrorBox({ message }: { message?: string }) {
 
 export function LoginForm({ next }: { next?: string }) {
   const [state, action, pending] = useActionState<FormState, FormData>(loginAction, {});
+  if (state.twoFactor) return <TwoFactorStep next={next} />;
   return (
     <form action={action} className="flex flex-col gap-4">
       <ErrorBox message={state.error} />
@@ -46,6 +47,43 @@ export function LoginForm({ next }: { next?: string }) {
           Regístrate
         </Link>
       </p>
+    </form>
+  );
+}
+
+// Segundo paso: el código de la app de autenticación o uno de recuperación.
+function TwoFactorStep({ next }: { next?: string }) {
+  const [state, action, pending] = useActionState<FormState, FormData>(twoFactorLoginAction, { twoFactor: true });
+  if (!state.twoFactor) {
+    return (
+      <div className="flex flex-col gap-4">
+        <ErrorBox message={state.error} />
+        <Link href={`/entrar?next=${encodeURIComponent(next ?? '/cuenta')}`} className="font-bold text-petbf hover:underline">
+          Volver a entrar
+        </Link>
+      </div>
+    );
+  }
+  return (
+    <form action={action} aria-label="Código de verificación" className="flex flex-col gap-4">
+      <ErrorBox message={state.error} />
+      <p>Abre tu app de autenticación y escribe el código de 6 dígitos de Petbf.</p>
+      <input type="hidden" name="next" value={next ?? '/cuenta'} />
+      <Field
+        label="Código"
+        id="code"
+        name="code"
+        autoComplete="one-time-code"
+        inputMode="text"
+        required
+        minLength={6}
+        maxLength={9}
+        autoFocus
+        hint="Si no tienes el teléfono, usa uno de tus códigos de recuperación."
+      />
+      <Button type="submit" disabled={pending}>
+        {pending ? 'Verificando…' : 'Verificar'}
+      </Button>
     </form>
   );
 }

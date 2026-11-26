@@ -26,6 +26,9 @@ export interface SessionUser {
   lastName: string;
   phone: string | null;
   roles: Role[];
+  // Verificación en dos pasos: `available` y `required` solo para el equipo;
+  // `verified` si esta sesión entró con el código.
+  twoFactor: { enabled: boolean; available: boolean; required: boolean; verified: boolean };
 }
 
 export interface AuthTokens {

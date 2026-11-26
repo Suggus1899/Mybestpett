@@ -10,7 +10,12 @@ import type { Env } from '../config/env.js';
 import { AuditService } from '../audit/audit.service.js';
 import { Prisma, type Role, type User } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import type { AccessTokenPayload, RequestMeta } from './auth.types.js';
+import { hasAnyRole } from '../common/roles.js';
+import type {
+  AccessTokenPayload,
+  AuthUser,
+  RequestMeta,
+} from './auth.types.js';
 import type { LoginDto, RefreshDto, RegisterDto } from './auth.schemas.js';
 import {
   buildToken,
@@ -25,6 +30,16 @@ export interface AuthTokens {
   accessTokenExpiresIn: number;
   refreshToken: string;
 }
+
+// Token intermedio entre la contraseña y el código: 5 minutos.
+export const CHALLENGE_TTL_SECONDS = 300;
+
+export const STAFF_ROLES: Role[] = [
+  'ADMIN',
+  'ORDERS_OPERATOR',
+  'CATALOG_MANAGER',
+  'ADOPTION_COORDINATOR',
+];
 
 export type PublicUser = Pick<
   User,
@@ -127,6 +142,17 @@ export class AuthService {
       throw new UnauthorizedException('Correo o contraseña incorrectos');
     }
 
+    // Con 2FA, la contraseña sola no abre sesión: falta el código.
+    if (user.totpEnabledAt) {
+      const payload: AccessTokenPayload = { sub: user.id, purpose: '2fa' };
+      return {
+        twoFactorRequired: true as const,
+        challengeToken: await this.jwt.signAsync(payload, {
+          expiresIn: CHALLENGE_TTL_SECONDS,
+        }),
+      };
+    }
+
     await this.audit.record({
       actorId: user.id,
       action: 'auth.login',
@@ -187,7 +213,7 @@ export class AuthService {
     if (count === 0) throw new UnauthorizedException('Sesión inválida');
 
     return {
-      accessToken: await this.signAccessToken(session.userId),
+      accessToken: await this.signAccessToken(session.userId, session.id),
       accessTokenExpiresIn: this.accessTtl(),
       refreshToken: buildToken(session.id, secret),
     };
@@ -212,17 +238,30 @@ export class AuthService {
     });
   }
 
-  async me(userId: string): Promise<PublicUser> {
+  async me(auth: AuthUser) {
     const user = await this.prisma.user.findUniqueOrThrow({
-      where: { id: userId },
-      select: publicUserSelect,
+      where: { id: auth.id },
+      select: { ...publicUserSelect, totpEnabledAt: true },
     });
-    return toPublicUser(user);
+    const { totpEnabledAt, ...rest } = user;
+    return {
+      ...toPublicUser(rest),
+      twoFactor: {
+        enabled: totpEnabledAt !== null,
+        // Solo el equipo la configura; para él es obligatoria si así se indica.
+        available: hasAnyRole(auth, STAFF_ROLES),
+        required:
+          hasAnyRole(auth, STAFF_ROLES) &&
+          this.config.get('STAFF_2FA_REQUIRED', { infer: true }),
+        verified: auth.mfa,
+      },
+    };
   }
 
-  private async issueTokens(
+  async issueTokens(
     userId: string,
     meta: RequestMeta,
+    mfa = false,
   ): Promise<AuthTokens> {
     const secret = generateSecret();
     const ttlDays = this.config.get('REFRESH_TOKEN_TTL_DAYS', { infer: true });
@@ -233,17 +272,18 @@ export class AuthService {
         ip: meta.ip,
         userAgent: meta.userAgent,
         expiresAt: new Date(Date.now() + ttlDays * 24 * 60 * 60 * 1000),
+        mfa,
       },
     });
     return {
-      accessToken: await this.signAccessToken(userId),
+      accessToken: await this.signAccessToken(userId, session.id),
       accessTokenExpiresIn: this.accessTtl(),
       refreshToken: buildToken(session.id, secret),
     };
   }
 
-  private signAccessToken(userId: string) {
-    const payload: AccessTokenPayload = { sub: userId };
+  private signAccessToken(userId: string, sessionId: string) {
+    const payload: AccessTokenPayload = { sub: userId, sid: sessionId };
     return this.jwt.signAsync(payload);
   }
 

@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import { expect, type Page } from '@playwright/test';
 
 export const API = process.env.E2E_API_URL ?? 'http://localhost:3001/v1';
@@ -119,4 +120,26 @@ export async function settleTestPayments() {
       await post(`/manage/payments/${p.id}/reject`, { reason: 'Limpieza de pruebas' }, token);
     }
   }
+}
+
+// Código TOTP (RFC 6238, SHA-1, 6 dígitos, 30 s) para la clave base32 dada.
+// `offset` en pasos de 30 s: la API acepta uno de margen.
+export function totp(secret: string, offset = 0) {
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  let bits = 0;
+  let value = 0;
+  const bytes: number[] = [];
+  for (const char of secret.replace(/\s/g, '')) {
+    value = (value << 5) | alphabet.indexOf(char);
+    bits += 5;
+    if (bits >= 8) {
+      bytes.push((value >>> (bits - 8)) & 255);
+      bits -= 8;
+    }
+  }
+  const counter = Buffer.alloc(8);
+  counter.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 30_000) + offset));
+  const hmac = createHmac('sha1', Buffer.from(bytes)).update(counter).digest();
+  const at = hmac[hmac.length - 1] & 0x0f;
+  return String((hmac.readUInt32BE(at) & 0x7fffffff) % 1_000_000).padStart(6, '0');
 }
