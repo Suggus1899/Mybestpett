@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -91,6 +92,9 @@ class FakeBackend {
       variants: [variant('v-mord', 'MOR-M', 'Talla M', 890, stock: 50)],
     ),
   ];
+
+  /// Especies que la tienda acepta (GET /animal-species).
+  List<String> liveSpecies = ['DOG', 'CAT', 'BIRD', 'RODENT', 'FISH'];
 
   final animals = <Json>[
     animal(
@@ -403,6 +407,12 @@ class FakeBackend {
       if (a == null) throw const _HttpError(404, 'Animal no encontrado');
       return _json(200, a);
     }
+    if (m == 'GET' && path == '/animal-species') {
+      return _json(200, [
+        for (final s in liveSpecies)
+          {'species': s, 'allowed': 'any', 'note': ''},
+      ]);
+    }
     if (m == 'GET' && path == '/shipping-zones') return _json(200, zones);
     if (m == 'GET' && path == '/payment-methods') return _json(200, methods);
 
@@ -522,6 +532,21 @@ class FakeBackend {
       }
       if (m == 'POST' && segments.length == 3 && segments[2] == 'payments') {
         return _report(order, _body(r));
+      }
+      if (m == 'POST' && segments.length == 3 && segments[2] == 'returns') {
+        return _requestReturn(order, _body(r));
+      }
+      if (segments.length == 5 &&
+          segments[2] == 'payments' &&
+          segments[4] == 'proof') {
+        if (m == 'PUT') return _attachProof(order, segments[3], r);
+        if (m == 'GET') {
+          final bytes = proofs[segments[3]];
+          if (bytes == null) {
+            throw const _HttpError(404, 'Este pago no tiene comprobante');
+          }
+          return http.Response.bytes(bytes, 200);
+        }
       }
     }
 
@@ -798,6 +823,8 @@ class FakeBackend {
         'instructions': method['instructions'],
       },
       'payments': <Json>[],
+      'returns': <Json>[],
+      'deliveredAt': null,
       'history': [
         {
           'toStatus': 'PENDING_PAYMENT',
@@ -816,9 +843,11 @@ class FakeBackend {
     String email, {
     String status = 'PENDING_PAYMENT',
     DateTime? createdAt,
+    Map<String, int> items = const {'v-mord': 2},
+    DateTime? deliveredAt,
   }) {
     addAddress(email);
-    carts.putIfAbsent(email, () => {})['v-mord'] = 2;
+    carts.putIfAbsent(email, () => {}).addAll(items);
     final saved = now;
     if (createdAt != null) now = createdAt;
     _checkout(email, {
@@ -830,6 +859,9 @@ class FakeBackend {
     now = saved;
     final order = orders.last;
     if (status != 'PENDING_PAYMENT') _transition(order, status, null);
+    if (status == 'DELIVERED') {
+      order['deliveredAt'] = (deliveredAt ?? now).toIso8601String();
+    }
     return order;
   }
 
@@ -855,10 +887,168 @@ class FakeBackend {
     '_count': {'items': (o['items']! as List).length},
   };
 
-  Json _public(Json o) => {
-    for (final e in o.entries)
-      if (e.key != '_owner') e.key: e.value,
-  };
+  Json _public(Json o) {
+    final delivered = o['deliveredAt'] as String?;
+    return {
+      for (final e in o.entries)
+        if (e.key != '_owner') e.key: e.value,
+      'returnUntil': o['status'] == 'DELIVERED' && delivered != null
+          ? DateTime.parse(delivered).add(returnWindow).toIso8601String()
+          : null,
+    };
+  }
+
+  static const returnWindow = Duration(days: 3);
+
+  /// Comprobantes guardados: id del pago -> bytes.
+  final proofs = <String, Uint8List>{};
+
+  http.Response _requestReturn(Json order, Json body) {
+    if (order['status'] != 'DELIVERED' || order['deliveredAt'] == null) {
+      throw const _HttpError(
+        409,
+        'Solo se devuelve un pedido que ya te entregamos',
+      );
+    }
+    final delivered = DateTime.parse(order['deliveredAt']! as String);
+    if (now.isAfter(delivered.add(returnWindow))) {
+      throw const _HttpError(
+        409,
+        'Pasaron más de 3 días desde la entrega: ya no admite devolución',
+      );
+    }
+    final reason = (body['reason'] as String? ?? '').trim();
+    if (reason.length < 10) {
+      throw const _HttpError(400, [
+        'reason: Cuéntanos el motivo (mínimo 10 caracteres)',
+      ]);
+    }
+    final lines = (body['items'] as List? ?? []).cast<Json>();
+    if (lines.isEmpty) {
+      throw const _HttpError(400, ['items: Elige al menos un producto']);
+    }
+    final returns = order['returns']! as List;
+    if (returns.cast<Json>().any(
+      (r) => r['status'] == 'REQUESTED' || r['status'] == 'APPROVED',
+    )) {
+      throw const _HttpError(
+        409,
+        'Ya tienes una devolución abierta para este pedido',
+      );
+    }
+    final items = (order['items']! as List).cast<Json>();
+    var refund = 0;
+    for (final line in lines) {
+      final item = items
+          .where((i) => i['id'] == line['orderItemId'])
+          .firstOrNull;
+      if (item == null) {
+        throw const _HttpError(400, 'Ese producto no es del pedido');
+      }
+      if (item['isReturnable'] != true) {
+        throw _HttpError(
+          400,
+          '${item['productName']} no admite devolución (alimento o higiene)',
+        );
+      }
+      final taken = returns
+          .cast<Json>()
+          .where((r) => r['status'] != 'REJECTED')
+          .expand((r) => (r['items']! as List).cast<Json>())
+          .where((l) => l['orderItemId'] == item['id'])
+          .fold(0, (a, l) => a + (l['quantity']! as int));
+      final left = (item['quantity']! as int) - taken;
+      if ((line['quantity']! as int) > left) {
+        throw _HttpError(
+          400,
+          'De ${item['productName']} puedes devolver como máximo $left',
+        );
+      }
+      refund +=
+          (item['unitPriceUsdCents']! as int) * (line['quantity']! as int);
+    }
+    returns.insert(0, {
+      'id': 'ret-${requests.length}',
+      'status': 'REQUESTED',
+      'reason': reason,
+      'refundUsdCents': refund,
+      'currency': order['chargedCurrency'],
+      'refundAmount': order['chargedCurrency'] == 'VES'
+          ? (refund * double.parse(order['usdVesRate']! as String) / 100)
+                .toStringAsFixed(2)
+          : (refund / 100).toStringAsFixed(2),
+      'decisionNote': null,
+      'refundReference': null,
+      'refundedAt': null,
+      'createdAt': now.toIso8601String(),
+      'items': [
+        for (final l in lines)
+          {'orderItemId': l['orderItemId'], 'quantity': l['quantity']},
+      ],
+    });
+    return _json(201, _public(order));
+  }
+
+  http.Response _attachProof(Json order, String paymentId, http.Request r) {
+    final payment = (order['payments']! as List)
+        .cast<Json>()
+        .where((p) => p['id'] == paymentId)
+        .firstOrNull;
+    if (payment == null) throw const _HttpError(404, 'Pago no encontrado');
+    final file = _multipartFile(r, 'file');
+    if (file == null || file.isEmpty) {
+      throw const _HttpError(400, 'Adjunta el comprobante en el campo "file"');
+    }
+    if (file.length > 5 * 1024 * 1024) {
+      throw const _HttpError(400, 'El comprobante pesa más de 5 MB');
+    }
+    final type = _sniff(file);
+    if (type == null) {
+      throw const _HttpError(
+        400,
+        'El comprobante debe ser una imagen JPG, PNG o WebP, o un PDF',
+      );
+    }
+    if (payment['status'] != 'REPORTED') {
+      throw const _HttpError(
+        409,
+        'Este pago ya fue revisado: no admite comprobante',
+      );
+    }
+    proofs[paymentId] = file;
+    final proof = {
+      'contentType': type,
+      'sizeBytes': file.length,
+      'createdAt': now.toIso8601String(),
+    };
+    payment['proof'] = proof;
+    // Como la API: responde solo los datos del comprobante.
+    return _json(200, proof);
+  }
+
+  static String? _sniff(Uint8List b) {
+    if (b.length >= 3 && b[0] == 0xff && b[1] == 0xd8 && b[2] == 0xff) {
+      return 'image/jpeg';
+    }
+    if (b.length >= 8 && b[0] == 0x89 && b[1] == 0x50) return 'image/png';
+    if (b.length >= 5 && latin1.decode(b.sublist(0, 5)) == '%PDF-') {
+      return 'application/pdf';
+    }
+    return null;
+  }
+
+  /// Bytes del campo [field] de un cuerpo multipart/form-data.
+  static Uint8List? _multipartFile(http.Request r, String field) {
+    final type = r.headers['content-type'] ?? '';
+    final match = RegExp('boundary=(.+)').firstMatch(type);
+    if (!type.startsWith('multipart/form-data') || match == null) return null;
+    final body = latin1.decode(r.bodyBytes);
+    final start = body.indexOf('name="$field"');
+    if (start < 0) return null;
+    final dataStart = body.indexOf('\r\n\r\n', start) + 4;
+    final dataEnd = body.indexOf('\r\n--${match.group(1)}', dataStart);
+    return Uint8List.fromList(r.bodyBytes.sublist(dataStart, dataEnd));
+  }
 
   final usedReferences = <String>{};
 
@@ -891,6 +1081,7 @@ class FakeBackend {
       'status': 'REPORTED',
       'rejectionReason': null,
       'createdAt': now.toIso8601String(),
+      'proof': null,
     });
     _transition(order, 'PAYMENT_REPORTED', 'Referencia $reference');
     return _json(201, _public(order));

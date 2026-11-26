@@ -1,9 +1,12 @@
+import 'dart:typed_data';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:petbf/app.dart';
 import 'package:petbf/core/api_client.dart';
+import 'package:petbf/core/proof.dart';
 import 'package:petbf/core/providers.dart';
 import 'package:petbf/core/token_store.dart';
 import 'package:petbf/router.dart';
@@ -12,11 +15,21 @@ import 'fake_backend.dart';
 
 /// La app completa sobre la API falsa, en un teléfono de 390×844.
 class TestApp {
-  TestApp(this.tester, this.backend, this.container, this.store, this._clock);
+  TestApp(
+    this.tester,
+    this.backend,
+    this.container,
+    this.store,
+    this._clock,
+    this.picker,
+  );
   final WidgetTester tester;
   final FakeBackend backend;
   final ProviderContainer container;
   final MemoryTokenStore store;
+
+  /// Selector de archivos falso: decide qué "elige" la persona.
+  final FakeProofPicker picker;
   final TestClock _clock;
 
   /// Hora que ve la app. Se puede adelantar para probar plazos.
@@ -65,11 +78,13 @@ Future<TestApp> startApp(
     tokenStore: store,
     now: () => clock.value,
   );
+  final picker = FakeProofPicker();
   final container = ProviderContainer(
     retry: (_, _) => null,
     overrides: [
       apiClientProvider.overrideWithValue(client),
       clockProvider.overrideWithValue(() => clock.value),
+      proofPickerProvider.overrideWithValue(picker),
     ],
   );
   addTearDown(container.dispose);
@@ -77,7 +92,7 @@ Future<TestApp> startApp(
   await tester.pumpWidget(
     UncontrolledProviderScope(container: container, child: const PetbfApp()),
   );
-  final app = TestApp(tester, fake, container, store, clock);
+  final app = TestApp(tester, fake, container, store, clock, picker);
   await app.settle();
   if (location != '/') await app.go(location);
   return app;
@@ -145,4 +160,26 @@ final Finder verticalScrollable = find
 class TestClock {
   TestClock(this.value);
   DateTime value;
+}
+
+/// Archivos de prueba con la firma real de cada tipo.
+Uint8List pngBytes([int size = 2048]) =>
+    Uint8List(size)
+      ..setAll(0, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+Uint8List pdfBytes([int size = 4096]) =>
+    Uint8List(size)..setAll(0, '%PDF-1.7'.codeUnits);
+
+class FakeProofPicker implements ProofPicker {
+  /// Lo que "elige" la persona en el siguiente intento; null = cancela.
+  (String, Uint8List)? next;
+  int calls = 0;
+
+  @override
+  Future<PickedProof?> pick() async {
+    calls++;
+    final file = next;
+    if (file == null) return null;
+    // Pasa por la misma validación que el selector real.
+    return checkProof(file.$1, file.$2);
+  }
 }

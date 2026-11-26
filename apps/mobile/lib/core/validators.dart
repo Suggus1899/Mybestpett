@@ -173,3 +173,11 @@ String? searchQuery(String value) {
   if (q.length < 2) return null;
   return q.length > 80 ? q.substring(0, 80) : q;
 }
+
+/// Motivo de una devolución: de 10 a 500 caracteres, como la API.
+String? validateReturnReason(String? value) {
+  final text = value?.trim() ?? '';
+  if (text.length < 10) return 'Cuéntanos el motivo (mínimo 10 caracteres)';
+  if (text.length > 500) return 'El motivo admite hasta 500 caracteres';
+  return null;
+}

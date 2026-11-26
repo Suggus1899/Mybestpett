@@ -350,6 +350,7 @@ class PaymentReport {
     required this.status,
     required this.rejectionReason,
     required this.createdAt,
+    this.proof,
   });
   factory PaymentReport.fromJson(Json json) => PaymentReport(
     id: json.str('id'),
@@ -367,6 +368,10 @@ class PaymentReport {
     },
     rejectionReason: json.strOrNull('rejectionReason'),
     createdAt: json.date('createdAt'),
+    proof: switch (json.objOrNull('proof')) {
+      final Json p => ProofInfo.fromJson(p),
+      null => null,
+    },
   );
   final String id;
   final String reference;
@@ -376,6 +381,120 @@ class PaymentReport {
   final PaymentStatus status;
   final String? rejectionReason;
   final DateTime createdAt;
+
+  /// Comprobante adjunto (solo sus datos; el archivo se pide aparte).
+  final ProofInfo? proof;
+}
+
+/// Datos del comprobante de un pago.
+class ProofInfo {
+  const ProofInfo({
+    required this.contentType,
+    required this.sizeBytes,
+    required this.createdAt,
+  });
+  factory ProofInfo.fromJson(Json json) => ProofInfo(
+    contentType: json.str('contentType'),
+    sizeBytes: json.integer('sizeBytes'),
+    createdAt: json.date('createdAt'),
+  );
+  final String contentType;
+  final int sizeBytes;
+  final DateTime createdAt;
+
+  bool get isImage => contentType.startsWith('image/');
+
+  /// "JPG", "PNG", "WEBP" o "PDF".
+  String get label => switch (contentType) {
+    'image/jpeg' => 'JPG',
+    'image/png' => 'PNG',
+    'image/webp' => 'WEBP',
+    'application/pdf' => 'PDF',
+    _ => 'Archivo',
+  };
+}
+
+enum ReturnStatus { requested, approved, rejected, refunded }
+
+extension ReturnStatusLabel on ReturnStatus {
+  String get label => switch (this) {
+    ReturnStatus.requested => 'En revisión',
+    ReturnStatus.approved => 'Aprobada',
+    ReturnStatus.rejected => 'Rechazada',
+    ReturnStatus.refunded => 'Reembolsada',
+  };
+
+  /// Una devolución abierta impide pedir otra del mismo pedido.
+  bool get isOpen =>
+      this == ReturnStatus.requested || this == ReturnStatus.approved;
+}
+
+/// Unidades de un producto del pedido incluidas en una devolución.
+class ReturnLine {
+  const ReturnLine({required this.orderItemId, required this.quantity});
+  factory ReturnLine.fromJson(Json json) => ReturnLine(
+    orderItemId: json.str('orderItemId'),
+    quantity: json.integer('quantity'),
+  );
+  final String orderItemId;
+  final int quantity;
+
+  Json toJson() => {'orderItemId': orderItemId, 'quantity': quantity};
+}
+
+class ReturnRequest {
+  const ReturnRequest({
+    required this.id,
+    required this.status,
+    required this.reason,
+    required this.refundUsdCents,
+    required this.currency,
+    required this.refundAmount,
+    required this.decisionNote,
+    required this.refundReference,
+    required this.refundedAt,
+    required this.createdAt,
+    required this.items,
+  });
+  factory ReturnRequest.fromJson(Json json) => ReturnRequest(
+    id: json.str('id'),
+    status: switch (json.str('status')) {
+      'REQUESTED' => ReturnStatus.requested,
+      'APPROVED' => ReturnStatus.approved,
+      'REJECTED' => ReturnStatus.rejected,
+      'REFUNDED' => ReturnStatus.refunded,
+      final other => throw FormatException(
+        'Estado de devolución desconocido: $other',
+      ),
+    },
+    reason: json.str('reason'),
+    refundUsdCents: json.integer('refundUsdCents'),
+    currency: currencyFromApi(json.str('currency')),
+    refundAmount: json.decimal('refundAmount'),
+    decisionNote: json.strOrNull('decisionNote'),
+    refundReference: json.strOrNull('refundReference'),
+    refundedAt: json.dateOrNull('refundedAt'),
+    createdAt: json.date('createdAt'),
+    items: asList(json['items'], ReturnLine.fromJson),
+  );
+  final String id;
+  final ReturnStatus status;
+  final String reason;
+  final int refundUsdCents;
+  final Currency currency;
+  final String refundAmount;
+  final String? decisionNote;
+  final String? refundReference;
+  final DateTime? refundedAt;
+  final DateTime createdAt;
+  final List<ReturnLine> items;
+}
+
+/// Un producto del pedido que todavía se puede devolver, y cuántas unidades.
+class ReturnableLine {
+  const ReturnableLine(this.item, this.left);
+  final OrderItem item;
+  final int left;
 }
 
 class StatusChange {
@@ -422,6 +541,8 @@ class Order {
     required this.paymentInstructions,
     required this.payments,
     required this.history,
+    this.returns = const [],
+    this.returnUntil,
   });
 
   factory Order.fromJson(Json json) {
@@ -453,6 +574,8 @@ class Order {
       paymentInstructions: method.str('instructions'),
       payments: asList(json['payments'], PaymentReport.fromJson),
       history: asList(json['history'], StatusChange.fromJson),
+      returns: asList(json['returns'] ?? const [], ReturnRequest.fromJson),
+      returnUntil: json.dateOrNull('returnUntil'),
     );
   }
 
@@ -484,9 +607,38 @@ class Order {
   final String paymentInstructions;
   final List<PaymentReport> payments;
   final List<StatusChange> history;
+  final List<ReturnRequest> returns;
+
+  /// Hasta cuándo se puede pedir una devolución (3 días desde la entrega).
+  final DateTime? returnUntil;
 
   bool get canReportPayment => status == OrderStatus.pendingPayment;
   bool get canCancel => status == OrderStatus.pendingPayment;
+
+  /// Productos devolvibles con las unidades que no están ya en otra
+  /// devolución (las rechazadas no cuentan), como calcula la API.
+  List<ReturnableLine> get returnableLeft {
+    final taken = <String, int>{};
+    for (final r in returns) {
+      if (r.status == ReturnStatus.rejected) continue;
+      for (final line in r.items) {
+        taken[line.orderItemId] =
+            (taken[line.orderItemId] ?? 0) + line.quantity;
+      }
+    }
+    return [
+      for (final item in items)
+        if (item.isReturnable && item.quantity - (taken[item.id] ?? 0) > 0)
+          ReturnableLine(item, item.quantity - (taken[item.id] ?? 0)),
+    ];
+  }
+
+  /// Dentro del plazo, sin otra devolución abierta y con algo por devolver.
+  bool canRequestReturn(DateTime now) =>
+      returnUntil != null &&
+      returnUntil!.isAfter(now) &&
+      !returns.any((r) => r.status.isOpen) &&
+      returnableLeft.isNotEmpty;
 }
 
 /// Lo que el cliente declara haber pagado.

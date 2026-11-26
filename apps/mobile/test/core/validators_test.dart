@@ -224,4 +224,18 @@ void main() {
     expect(searchQuery(' ab '), 'ab');
     expect(searchQuery('x' * 100), hasLength(80));
   });
+
+  test('motivo de devolución: de 10 a 500 caracteres', () {
+    expect(
+      validateReturnReason('  corto   '),
+      'Cuéntanos el motivo (mínimo 10 caracteres)',
+    );
+    expect(validateReturnReason(null), isNotNull);
+    expect(validateReturnReason('Llegó roto'), isNull);
+    expect(validateReturnReason('x' * 500), isNull);
+    expect(
+      validateReturnReason('x' * 501),
+      'El motivo admite hasta 500 caracteres',
+    );
+  });
 }

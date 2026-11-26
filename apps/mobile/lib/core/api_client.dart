@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 
@@ -31,6 +32,7 @@ const genericErrorMessage = 'Algo salió mal. Inténtalo de nuevo.';
 /// `{ "message": "..." }` o `{ "message": ["campo: ...", ...] }`.
 String errorMessageFrom(int status, String body) {
   if (status == 429) return 'Demasiados intentos. Espera un minuto.';
+  if (status == 413) return 'El archivo pesa más de 5 MB.';
   try {
     final json = jsonDecode(body);
     if (json is Map<String, Object?>) {
@@ -48,6 +50,20 @@ String errorMessageFrom(int status, String body) {
     return 'El servidor tuvo un problema. Inténtalo de nuevo en unos minutos.';
   }
   return genericErrorMessage;
+}
+
+/// Archivo que se envía como `multipart/form-data`.
+class UploadFile {
+  const UploadFile({
+    required this.field,
+    required this.bytes,
+    required this.filename,
+    required this.contentType,
+  });
+  final String field;
+  final Uint8List bytes;
+  final String filename;
+  final String contentType;
 }
 
 /// Cliente HTTP de la API de Petbf.
@@ -134,15 +150,28 @@ class ApiClient {
 
   Future<Object?> delete(String path) => _request('DELETE', path, auth: true);
 
+  /// Sube un archivo con sesión (p. ej. el comprobante de un pago).
+  Future<Object?> upload(String method, String path, UploadFile file) =>
+      _request(method, path, upload: file, auth: true);
+
+  /// Descarga un archivo privado (p. ej. un comprobante) tal cual.
+  Future<Uint8List> getBytes(String path) async =>
+      (await _request('GET', path, auth: true, raw: true))! as Uint8List;
+
   Future<Object?> _request(
     String method,
     String path, {
     Map<String, String?> query = const {},
     Object? body,
+    UploadFile? upload,
+    bool raw = false,
     required bool auth,
   }) async {
+    Object? read(http.Response response) =>
+        raw ? _checked(response).bodyBytes : _decode(response);
+
     if (!auth) {
-      return _decode(await _send(method, path, query: query, body: body));
+      return read(await _send(method, path, query: query, body: body));
     }
 
     var tokens = await currentTokens();
@@ -160,6 +189,7 @@ class ApiClient {
       path,
       query: query,
       body: body,
+      upload: upload,
       accessToken: tokens.accessToken,
     );
     if (response.statusCode == 401) {
@@ -173,13 +203,14 @@ class ApiClient {
         path,
         query: query,
         body: body,
+        upload: upload,
         accessToken: tokens.accessToken,
       );
       if (response.statusCode == 401) {
         await _expire();
       }
     }
-    return _decode(response);
+    return read(response);
   }
 
   Future<AuthTokens> _refresh(AuthTokens used) async {
@@ -223,6 +254,7 @@ class ApiClient {
     String path, {
     Map<String, String?> query = const {},
     Object? body,
+    UploadFile? upload,
     String? accessToken,
   }) async {
     final params = {
@@ -231,14 +263,29 @@ class ApiClient {
     };
     final uri = Uri.parse('$baseUrl$path')
         .replace(queryParameters: params.isEmpty ? null : params);
-    final request = http.Request(method, uri)
-      ..headers['Accept'] = 'application/json';
+    // Cada intento arma una petición nueva: una multipart no se reenvía.
+    final http.BaseRequest request;
+    if (upload != null) {
+      request = http.MultipartRequest(method, uri)
+        ..files.add(
+          http.MultipartFile.fromBytes(
+            upload.field,
+            upload.bytes,
+            filename: upload.filename,
+            contentType: http.MediaType.parse(upload.contentType),
+          ),
+        );
+    } else {
+      final plain = http.Request(method, uri);
+      if (body != null) {
+        plain.headers['Content-Type'] = 'application/json';
+        plain.body = jsonEncode(body);
+      }
+      request = plain;
+    }
+    request.headers['Accept'] = 'application/json';
     if (accessToken != null) {
       request.headers['Authorization'] = 'Bearer $accessToken';
-    }
-    if (body != null) {
-      request.headers['Content-Type'] = 'application/json';
-      request.body = jsonEncode(body);
     }
     try {
       final streamed = await _http.send(request).timeout(timeout);
@@ -250,7 +297,8 @@ class ApiClient {
     }
   }
 
-  Object? _decode(http.Response response) {
+  /// Lanza [ApiException] si la respuesta no es un 2xx.
+  http.Response _checked(http.Response response) {
     final status = response.statusCode;
     if (status == 401 && response.request?.headers['Authorization'] != null) {
       throw const ApiException(sessionExpiredMessage, status: 401);
@@ -261,6 +309,11 @@ class ApiClient {
         status: status,
       );
     }
+    return response;
+  }
+
+  Object? _decode(http.Response response) {
+    final status = _checked(response).statusCode;
     if (status == 204 || response.body.isEmpty) return null;
     try {
       return jsonDecode(utf8.decode(response.bodyBytes));

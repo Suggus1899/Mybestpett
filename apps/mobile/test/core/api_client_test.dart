@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -403,5 +404,78 @@ void main() {
   test('dispose cierra el cliente HTTP', () {
     final client = clientFor(MockClient((_) async => json(200, {})));
     expect(client.dispose, returnsNormally);
+  });
+
+  group('subir y bajar archivos', () {
+    test('sube multipart y reintenta con un token nuevo tras un 401', () async {
+      final seen = <String>[];
+      final store = MemoryTokenStore()..tokens = tokens();
+      final client = clientFor(
+        MockClient((r) async {
+          if (r.url.path.endsWith('/auth/refresh')) {
+            return json(200, {
+              'accessToken': 'at-new',
+              'refreshToken': 'rt-new',
+              'accessTokenExpiresIn': 900,
+            });
+          }
+          final auth = r.headers['Authorization'];
+          seen.add('${r.headers['content-type']!.split(';').first} $auth');
+          expect(latin1.decode(r.bodyBytes), contains('name="file"'));
+          expect(latin1.decode(r.bodyBytes), contains('filename="p.png"'));
+          if (auth == 'Bearer at-old') return json(401, {'message': 'x'});
+          return json(200, {'ok': true});
+        }),
+        store: store,
+      );
+      final result = await client.upload(
+        'PUT',
+        '/orders/o-1/payments/p-1/proof',
+        UploadFile(
+          field: 'file',
+          bytes: Uint8List.fromList([1, 2, 3]),
+          filename: 'p.png',
+          contentType: 'image/png',
+        ),
+      );
+      expect(result, {'ok': true});
+      expect(seen, [
+        'multipart/form-data Bearer at-old',
+        'multipart/form-data Bearer at-new',
+      ]);
+    });
+
+    test('descarga bytes tal cual y traduce los errores', () async {
+      final store = MemoryTokenStore()..tokens = tokens();
+      final client = clientFor(
+        MockClient((r) async {
+          if (r.url.path.endsWith('/missing')) {
+            return json(404, {'message': 'Este pago no tiene comprobante'});
+          }
+          return http.Response.bytes([0x89, 0x50, 0x4e, 0x47], 200);
+        }),
+        store: store,
+      );
+      expect(await client.getBytes('/file'), [0x89, 0x50, 0x4e, 0x47]);
+      await expectLater(
+        client.getBytes('/missing'),
+        throwsA(
+          isA<ApiException>()
+              .having((e) => e.status, 'status', 404)
+              .having(
+                (e) => e.message,
+                'message',
+                'Este pago no tiene comprobante',
+              ),
+        ),
+      );
+    });
+
+    test('413 se explica como archivo demasiado grande', () {
+      expect(
+        errorMessageFrom(413, 'Payload Too Large'),
+        'El archivo pesa más de 5 MB.',
+      );
+    });
   });
 }

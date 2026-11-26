@@ -347,6 +347,130 @@ void main() {
       expect(PaymentStatus.rejected.label, 'Rechazado');
       expect(Species.rodent.label, 'Roedores');
       expect(Sex.unknown.label, 'Sin determinar');
+      expect(ReturnStatus.requested.label, 'En revisión');
+      expect(ReturnStatus.refunded.label, 'Reembolsada');
+    });
+  });
+
+  group('devoluciones y comprobantes', () {
+    Future<Order> delivered({Duration ago = Duration.zero}) async {
+      backend.seedOrder(
+        'ana@petbf.com',
+        status: 'DELIVERED',
+        items: {'v-mord': 2, 'v-1kg': 1},
+        deliveredAt: backend.now.subtract(ago),
+      );
+      await api.login(email: 'ana@petbf.com', password: 'secreta123');
+      return api.order('o-1');
+    }
+
+    test('lee el plazo y lo que queda por devolver', () async {
+      final order = await delivered();
+      expect(order.returnUntil, backend.now.add(const Duration(days: 3)));
+      expect(order.returns, isEmpty);
+      final left = order.returnableLeft;
+      expect(left.map((l) => (l.item.productName, l.left)), [
+        ('Mordedor de caucho', 2),
+      ]);
+      expect(order.canRequestReturn(backend.now), isTrue);
+      expect(
+        order.canRequestReturn(backend.now.add(const Duration(days: 3))),
+        isFalse,
+      );
+    });
+
+    test('envía la devolución y descuenta las unidades pedidas', () async {
+      await delivered();
+      final order = await api.requestReturn(
+        'o-1',
+        reason: '  Llegó roto el mordedor  ',
+        items: const [ReturnLine(orderItemId: 'oi-v-mord', quantity: 1)],
+      );
+      expect(lastBody('POST', '/orders/o-1/returns'), {
+        'reason': 'Llegó roto el mordedor',
+        'items': [
+          {'orderItemId': 'oi-v-mord', 'quantity': 1},
+        ],
+      });
+      final r = order.returns.single;
+      expect(r.status, ReturnStatus.requested);
+      expect(r.refundUsdCents, 890);
+      expect(r.currency, Currency.ves);
+      expect(order.returnableLeft.single.left, 1);
+      // Abierta: no se puede pedir otra hasta que la revisen.
+      expect(order.canRequestReturn(backend.now), isFalse);
+    });
+
+    test('las rechazadas no cuentan como devueltas', () {
+      final order = Order.fromJson({
+        ...backend.seedOrder('ana@petbf.com', status: 'DELIVERED')
+          ..remove('_owner'),
+        'returnUntil': backend.now
+            .add(const Duration(days: 1))
+            .toIso8601String(),
+        'returns': [
+          for (final status in ['REJECTED', 'REFUNDED'])
+            {
+              'id': 'r-$status',
+              'status': status,
+              'reason': 'motivo largo',
+              'refundUsdCents': 890,
+              'currency': 'VES',
+              'refundAmount': '324.85',
+              'decisionNote': null,
+              'refundReference': null,
+              'refundedAt': null,
+              'createdAt': backend.now.toIso8601String(),
+              'items': [
+                {'orderItemId': 'oi-v-mord', 'quantity': 1},
+              ],
+            },
+        ],
+      });
+      expect(order.returnableLeft.single.left, 1);
+      expect(order.canRequestReturn(backend.now), isTrue);
+    });
+
+    test('un pedido de la API anterior (sin devoluciones) sigue leyéndose', () {
+      final json = backend.seedOrder('ana@petbf.com')..remove('_owner');
+      json.remove('returns');
+      final order = Order.fromJson(json);
+      expect(order.returns, isEmpty);
+      expect(order.returnUntil, isNull);
+      expect(order.canRequestReturn(backend.now), isFalse);
+    });
+
+    test('lee los datos del comprobante', () {
+      final p = PaymentReport.fromJson({
+        'id': 'p',
+        'reference': 'ABC1',
+        'amount': '10.00',
+        'currency': 'USD',
+        'paidAt': backend.now.toIso8601String(),
+        'status': 'REPORTED',
+        'rejectionReason': null,
+        'createdAt': backend.now.toIso8601String(),
+        'proof': {
+          'contentType': 'image/webp',
+          'sizeBytes': 5000,
+          'createdAt': backend.now.toIso8601String(),
+        },
+      });
+      expect(p.proof!.label, 'WEBP');
+      expect(p.proof!.isImage, isTrue);
+      expect(p.proof!.sizeBytes, 5000);
+    });
+
+    test('estado de devolución desconocido falla', () {
+      expect(
+        () => ReturnRequest.fromJson({'id': 'x', 'status': 'LOST'}),
+        throwsFormatException,
+      );
+    });
+
+    test('especies aceptadas para animales vivos', () async {
+      backend.liveSpecies = ['DOG', 'BIRD'];
+      expect(await api.animalSpecies(), [Species.dog, Species.bird]);
     });
   });
 

@@ -9,12 +9,14 @@
 // Sin CONTRACT_API_URL se salta. Vive fuera de test/ para que no cargue
 // flutter_test_config.dart: el binding de widgets bloquea la red real.
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:petbf/core/api_client.dart';
 import 'package:petbf/core/money.dart';
 import 'package:petbf/core/petbf_api.dart';
+import 'package:petbf/core/proof.dart';
 import 'package:petbf/core/token_store.dart';
 import 'package:petbf/models/catalog.dart';
 import 'package:petbf/models/shop.dart';
@@ -142,6 +144,11 @@ void main() {
       expect(missing.isNotFound, isTrue);
     });
 
+    test('especies aceptadas para animales vivos', () async {
+      final species = await api.animalSpecies();
+      expect(species, containsAll([Species.dog, Species.cat]));
+    });
+
     test('animales en venta y en adopción', () async {
       final sale = await api.animals(
         const AnimalQuery(listingType: ListingType.sale),
@@ -249,6 +256,48 @@ void main() {
       );
       expect(reported.status, OrderStatus.paymentReported);
       expect(reported.payments.single.status, PaymentStatus.reported);
+      expect(reported.payments.single.proof, isNull);
+      expect(reported.returns, isEmpty);
+      expect(reported.returnUntil, isNull);
+
+      // Comprobante: la API mira el contenido, no el nombre.
+      final paymentId = reported.payments.single.id;
+      final png = Uint8List(2048)
+        ..setAll(0, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+      final proof = await api.attachProof(
+        order.id,
+        paymentId,
+        checkProof('pago.png', png),
+      );
+      expect(proof.contentType, 'image/png');
+      expect(proof.sizeBytes, png.length);
+      final seen = (await api.order(order.id)).payments.single.proof!;
+      expect(seen.sizeBytes, png.length);
+      expect(await api.proofFile(order.id, paymentId), png);
+      final fake = await failure(
+        api.attachProof(
+          order.id,
+          paymentId,
+          PickedProof(
+            name: 'falso.png',
+            bytes: Uint8List(64),
+            contentType: 'image/png',
+          ),
+        ),
+      );
+      expect(fake.status, 400);
+      expect(fake.message, proofWrongTypeMessage);
+
+      // Sin entregar no se puede devolver.
+      final early = await failure(
+        api.requestReturn(
+          order.id,
+          reason: 'Prueba de contrato de devolución',
+          items: [ReturnLine(orderItemId: order.items.single.id, quantity: 1)],
+        ),
+      );
+      expect(early.status, 409);
+      expect(early.message, 'Solo se devuelve un pedido que ya te entregamos');
 
       final again = await failure(
         api.reportPayment(
