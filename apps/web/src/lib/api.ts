@@ -110,6 +110,159 @@ export interface InventorySummary {
   animalsForAdoption: number;
 }
 
+// ---------- Compra ----------
+
+export type Currency = 'USD' | 'VES' | 'EUR' | 'USDT';
+
+export interface Cart {
+  items: {
+    variantId: string;
+    sku: string;
+    name: string;
+    product: { name: string; slug: string; image: Image | null };
+    unitPriceUsdCents: number;
+    quantity: number;
+    lineTotalUsdCents: number;
+    issue: 'unavailable' | 'insufficient_stock' | null;
+    available: number;
+  }[];
+  itemCount: number;
+  subtotalUsdCents: number;
+  canCheckout: boolean;
+}
+
+export interface Address {
+  id: string;
+  recipientName: string;
+  phone: string;
+  state: string;
+  city: string;
+  municipality: string | null;
+  line1: string;
+  referencePoint: string | null;
+  isDefault: boolean;
+}
+
+export interface ShippingZone {
+  id: string;
+  name: string;
+  states: string[];
+  carrier: string;
+  priceUsdCents: number;
+  freeOverUsdCents: number;
+}
+
+export interface PaymentMethod {
+  id: string;
+  code: string;
+  name: string;
+  currency: Currency;
+  instructions: string;
+}
+
+export type OrderStatus =
+  | 'PENDING_PAYMENT'
+  | 'PAYMENT_REPORTED'
+  | 'PAID'
+  | 'PREPARING'
+  | 'SHIPPED'
+  | 'DELIVERED'
+  | 'CANCELLED'
+  | 'REFUNDED';
+
+export type PaymentStatus = 'REPORTED' | 'VERIFIED' | 'REJECTED';
+
+export interface OrderSummary {
+  id: string;
+  code: string;
+  status: OrderStatus;
+  totalUsdCents: number;
+  totalCharged: string;
+  chargedCurrency: Currency;
+  paymentDueAt: string;
+  createdAt: string;
+  _count: { items: number };
+  user?: { email: string; firstName: string; lastName: string };
+  state?: string;
+  city?: string;
+}
+
+export interface Order {
+  id: string;
+  code: string;
+  status: OrderStatus;
+  chargedCurrency: Currency;
+  usdVesRate: string | null;
+  eurVesRate: string | null;
+  rateEffectiveAt: string | null;
+  subtotalUsdCents: number;
+  shippingUsdCents: number;
+  totalUsdCents: number;
+  totalCharged: string;
+  recipientName: string;
+  phone: string;
+  state: string;
+  city: string;
+  municipality: string | null;
+  line1: string;
+  referencePoint: string | null;
+  shippingZoneName: string;
+  carrier: string;
+  trackingCode: string | null;
+  paymentDueAt: string;
+  createdAt: string;
+  items: {
+    id: string;
+    productName: string;
+    productSlug: string;
+    variantName: string;
+    sku: string;
+    unitPriceUsdCents: number;
+    quantity: number;
+    isReturnable: boolean;
+  }[];
+  paymentMethod: { code: string; name: string; currency: Currency; instructions: string };
+  payments: {
+    id: string;
+    reference: string;
+    amount: string;
+    currency: Currency;
+    paidAt: string;
+    status: PaymentStatus;
+    rejectionReason: string | null;
+    originBank?: string | null;
+    createdAt: string;
+  }[];
+  history: {
+    toStatus: OrderStatus;
+    note: string | null;
+    createdAt: string;
+    changedBy?: { firstName: string; lastName: string } | null;
+  }[];
+  user?: { email: string; firstName: string; lastName: string; phone: string | null };
+}
+
+export interface PaymentRow {
+  id: string;
+  reference: string;
+  originBank: string | null;
+  amount: string;
+  currency: Currency;
+  paidAt: string;
+  status: PaymentStatus;
+  rejectionReason: string | null;
+  createdAt: string;
+  method: { code: string; name: string };
+  order: {
+    id: string;
+    code: string;
+    status: OrderStatus;
+    totalCharged: string;
+    chargedCurrency: Currency;
+    user: { email: string; firstName: string; lastName: string };
+  };
+}
+
 export class ApiError extends Error {
   constructor(readonly status: number) {
     super(`La API respondió ${status}`);
@@ -149,6 +302,16 @@ export const api = {
   // Rutas del equipo: van con la sesión del usuario.
   inventory: (params: Params) => get<Page<InventoryRow>>(`/manage/inventory${qs(params)}`, true),
   inventorySummary: () => get<InventorySummary>('/manage/inventory/summary', true),
+  manageOrders: (params: Params) => get<Page<OrderSummary>>(`/manage/orders${qs(params)}`, true),
+  manageOrder: (id: string) => get<Order>(`/manage/orders/${encodeURIComponent(id)}`, true),
+  managePayments: (params: Params) => get<Page<PaymentRow>>(`/manage/payments${qs(params)}`, true),
+  // Compra: con la sesión del cliente.
+  cart: () => get<Cart>('/cart', true),
+  addresses: () => get<Address[]>('/addresses', true),
+  shippingZones: () => get<ShippingZone[]>('/shipping-zones'),
+  paymentMethods: () => get<PaymentMethod[]>('/payment-methods'),
+  myOrders: (params: Params) => get<Page<OrderSummary>>(`/orders${qs(params)}`, true),
+  myOrder: (id: string) => get<Order>(`/orders/${encodeURIComponent(id)}`, true),
 };
 
 export const speciesLabel: Record<Species, string> = {

@@ -53,8 +53,8 @@ test.describe('catálogo', () => {
   test('ficha de producto con presentaciones, oferta y política de devolución', async ({ page }) => {
     await open(page, '/productos/croquetas-perro-adulto-pollo');
     await expect(page.getByRole('heading', { name: 'Croquetas perro adulto sabor pollo' })).toBeVisible();
-    await expect(page.getByText('Saco 3 kg')).toBeVisible();
-    await expect(page.getByText('Saco 15 kg')).toBeVisible();
+    await expect(page.getByText('Saco 3 kg', { exact: true })).toBeVisible();
+    await expect(page.getByText('Saco 15 kg', { exact: true })).toBeVisible();
     await expect(page.getByText('$17,00')).toBeVisible(); // precio anterior tachado
     await expect(page.getByText(/no admite devolución una vez abierto/)).toBeVisible();
     // El público no ve cantidades de stock, solo si está disponible.

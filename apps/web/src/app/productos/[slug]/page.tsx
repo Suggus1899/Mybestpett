@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
 import { OfferBadge, Picture, Price } from '@/components/catalog';
+import { AddToCartForm } from '@/components/shop-forms';
 import { api, speciesLabel } from '@/lib/api';
 
 async function Product({ params }: { params: Promise<{ slug: string }> }) {
@@ -56,7 +57,7 @@ async function Product({ params }: { params: Promise<{ slug: string }> }) {
               {product.variants.map((variant) => (
                 <li
                   key={variant.id}
-                  className="flex items-center justify-between gap-4 rounded-[var(--radius-field)] border border-line bg-white p-4"
+                  className="flex flex-wrap items-center justify-between gap-4 rounded-[var(--radius-field)] border border-line bg-white p-4"
                 >
                   <div>
                     <p className="font-bold">{variant.name}</p>
@@ -67,19 +68,26 @@ async function Product({ params }: { params: Promise<{ slug: string }> }) {
                       <p className="text-sm font-bold text-danger">Agotado</p>
                     )}
                   </div>
-                  <div className="flex flex-col items-end gap-1 text-right">
+                  <div className="flex flex-col items-end gap-2 text-right">
                     {variant.compareAtUsdCents != null && <OfferBadge />}
                     <Price
                       usdCents={variant.priceUsdCents}
                       compareAtUsdCents={variant.compareAtUsdCents}
                       rate={rate}
                     />
+                    {variant.inStock && (
+                      <AddToCartForm
+                        variantId={variant.id}
+                        back={`/productos/${product.slug}`}
+                        label={`${product.name} ${variant.name}`}
+                      />
+                    )}
                   </div>
                 </li>
               ))}
             </ul>
             <p className="mt-3 text-sm text-slate">
-              El carrito y el pago llegan en la próxima versión.
+              Para comprar necesitas una cuenta. Si no has entrado, te lo pediremos al añadir.
             </p>
           </section>
 

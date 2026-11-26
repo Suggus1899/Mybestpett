@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { Suspense } from 'react';
 import { Button } from '@/components/ui';
@@ -35,6 +36,11 @@ async function Account() {
         <dt className="font-bold">Tipo de cuenta</dt>
         <dd>{user.roles.map((role) => roleLabel[role]).join(', ')}</dd>
       </dl>
+      <p className="mb-6">
+        <Link href="/pedidos" className="font-bold text-petbf hover:underline">
+          Ver mis pedidos
+        </Link>
+      </p>
       <form action={logoutAction}>
         <Button type="submit" variant="secondary">
           Cerrar sesión

@@ -8,6 +8,8 @@ export const metadata: Metadata = {
 
 const links = [
   { href: '/admin', label: 'Resumen' },
+  { href: '/admin/pagos', label: 'Pagos' },
+  { href: '/admin/pedidos', label: 'Pedidos' },
   { href: '/admin/inventario', label: 'Inventario' },
 ];
 

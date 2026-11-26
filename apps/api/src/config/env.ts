@@ -23,6 +23,8 @@ export const envSchema = z.object({
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(30),
   // Intentos por minuto y por IP en registro y login. Solo se sube para pruebas.
   AUTH_THROTTLE_LIMIT: z.coerce.number().int().min(1).max(1000).default(10),
+  // Peticiones por minuto y por IP en el resto de rutas.
+  THROTTLE_LIMIT: z.coerce.number().int().min(1).max(100_000).default(120),
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -56,3 +56,25 @@ export function Field({
     </div>
   );
 }
+
+// Mensaje de resultado de un formulario: error (alerta) o confirmación.
+export function Notice({ error, ok }: { error?: string; ok?: string }) {
+  if (error) {
+    return (
+      <p role="alert" className="rounded-[var(--radius-field)] bg-red-50 px-4 py-3 text-danger">
+        {error}
+      </p>
+    );
+  }
+  if (ok) {
+    return (
+      <p role="status" className="rounded-[var(--radius-field)] bg-petbf-soft px-4 py-3 text-petbf-dark">
+        {ok}
+      </p>
+    );
+  }
+  return null;
+}
+
+export const inputClass =
+  'min-h-11 rounded-[var(--radius-field)] border border-line bg-white px-4 outline-none focus:border-petbf';

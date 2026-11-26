@@ -4,6 +4,7 @@
 import 'dotenv/config';
 import { PrismaPg } from '@prisma/adapter-pg';
 import * as argon2 from 'argon2';
+import { VE_STATES } from '../src/common/venezuela.js';
 import { PrismaClient } from '../src/generated/prisma/client.js';
 
 const prisma = new PrismaClient({
@@ -17,6 +18,33 @@ const categories = [
   { name: 'Peces', slug: 'peces' },
   { name: 'Roedores', slug: 'roedores' },
   { name: 'Reptiles', slug: 'reptiles' },
+];
+
+// Métodos de pago del MVP. Los datos de cuenta los completa el administrador en el panel.
+const paymentMethods = [
+  { code: 'PAGO_MOVIL', name: 'Pago Móvil', currency: 'VES' },
+  { code: 'TRANSFER_VES', name: 'Transferencia en bolívares', currency: 'VES' },
+  { code: 'ZELLE', name: 'Zelle', currency: 'USD' },
+  { code: 'CASH_USD', name: 'Efectivo en dólares', currency: 'USD' },
+  { code: 'TRANSFER_EUR', name: 'Transferencia en euros', currency: 'EUR' },
+  { code: 'USDT', name: 'USDT', currency: 'USDT' },
+] as const;
+
+// Zonas de partida (supuesto S5 del MVP): tarifas provisionales que el
+// administrador ajusta. Envío gratis desde 25 $.
+const zones = [
+  {
+    name: 'Delivery en Caracas',
+    states: ['Distrito Capital', 'Miranda'],
+    carrier: 'Delivery propio',
+    priceUsdCents: 300,
+  },
+  {
+    name: 'Encomienda nacional',
+    states: [...VE_STATES],
+    carrier: 'Agencia de encomiendas',
+    priceUsdCents: 600,
+  },
 ];
 
 async function main() {
@@ -58,6 +86,24 @@ async function main() {
     });
   }
   console.log(`${categories.length} categorías base listas.`);
+
+  for (const [sortOrder, method] of paymentMethods.entries()) {
+    await prisma.paymentMethod.upsert({
+      where: { code: method.code },
+      update: {}, // no pisa lo que el administrador ya configuró
+      create: {
+        ...method,
+        sortOrder,
+        instructions: 'Datos de pago por configurar en el panel.',
+      },
+    });
+  }
+  if ((await prisma.shippingZone.count()) === 0) {
+    await prisma.shippingZone.createMany({
+      data: zones.map((zone, sortOrder) => ({ ...zone, sortOrder })),
+    });
+  }
+  console.log('Métodos de pago y zonas de envío listos.');
 
   if (process.env.SEED_DEMO === 'true') await seedDemo();
 }

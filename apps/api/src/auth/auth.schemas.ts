@@ -15,17 +15,18 @@ const password = z
 
 const name = z.string().trim().min(1).max(80);
 
+// Formato venezolano flexible: +58 412 1234567, 0412-1234567, etc.
+export const phoneSchema = z
+  .string()
+  .trim()
+  .regex(/^\+?[0-9\s-]{10,16}$/, 'Teléfono inválido');
+
 export const registerSchema = z.object({
   email,
   password,
   firstName: name,
   lastName: name,
-  // Formato venezolano flexible: +58 412 1234567, 0412-1234567, etc.
-  phone: z
-    .string()
-    .trim()
-    .regex(/^\+?[0-9\s-]{10,16}$/, 'Teléfono inválido')
-    .optional(),
+  phone: phoneSchema.optional(),
 });
 
 export const loginSchema = z.object({

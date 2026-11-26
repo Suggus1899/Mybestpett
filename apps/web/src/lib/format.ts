@@ -16,3 +16,29 @@ export function formatBs(cents: number, rate: string): string {
 export function formatInt(value: number): string {
   return new Intl.NumberFormat('es-VE').format(value);
 }
+
+// Monto exacto en la moneda del pago (texto decimal de la API).
+export function formatMoney(amount: string, currency: 'USD' | 'VES' | 'EUR' | 'USDT'): string {
+  const value = number.format(Number(amount));
+  switch (currency) {
+    case 'USD':
+      return `$${value}`;
+    case 'VES':
+      return `Bs. ${value}`;
+    case 'EUR':
+      return `${value} €`;
+    case 'USDT':
+      return `${value} USDT`;
+  }
+}
+
+// Fecha y hora en Caracas, que es donde opera la tienda.
+const dateTime = new Intl.DateTimeFormat('es-VE', {
+  dateStyle: 'medium',
+  timeStyle: 'short',
+  timeZone: 'America/Caracas',
+});
+
+export function formatDateTime(iso: string): string {
+  return dateTime.format(new Date(iso));
+}
