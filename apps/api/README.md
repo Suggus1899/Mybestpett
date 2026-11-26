@@ -45,3 +45,21 @@ pnpm test:e2e                 # usa una base desechable: la vacía en cada prueb
 | GET | /v1/users | ADMIN |
 | PUT | /v1/users/:id/roles | ADMIN |
 | PATCH | /v1/users/:id/status | ADMIN |
+| GET | /v1/categories, /v1/brands | público |
+| GET | /v1/products, /v1/products/:slug | público (sin cantidades de stock) |
+| GET | /v1/animals, /v1/animals/:slug | público |
+| GET | /v1/exchange-rates/current | público |
+| GET | /v1/exchange-rates | ORDERS_OPERATOR |
+| POST | /v1/exchange-rates | ADMIN (tasa BCV del día) |
+| GET, POST, PATCH, PUT | /v1/manage/products, /variants, /categories, /brands | CATALOG_MANAGER |
+| POST, PATCH | /v1/manage/animals | CATALOG_MANAGER (venta), ADOPTION_COORDINATOR (adopción) |
+| GET | /v1/manage/inventory, /v1/manage/inventory/summary | CATALOG_MANAGER, ORDERS_OPERATOR |
+
+`ADMIN` pasa todas las comprobaciones de rol.
+
+## Reglas de validación que conviene recordar
+
+- Los esquemas de edición no tienen valores por defecto: si los tuvieran, un PATCH
+  parcial pisaría campos que no se enviaron (pasó con el stock y está cubierto por pruebas).
+- Zod descarta los campos desconocidos: un cliente no puede colarse `roles` o `isActive`.
+- Precios en céntimos enteros; imágenes solo `https`; tasas como texto decimal.

@@ -256,16 +256,19 @@ enum Currency {
   USDT
 }
 
-// Cuántas unidades de `quote` vale 1 USD según `source` (por ejemplo BCV).
+// Tasa oficial tal como la publica la fuente: 1 `base` = `rate` `quote`.
+// Ej.: base USD, quote VES, rate 245.67 (Bs por dólar); base EUR, quote VES.
 model ExchangeRate {
   id          String   @id @default(uuid()) @db.Uuid
+  base        Currency
   quote       Currency
   rate        Decimal  @db.Decimal(20, 8)
   source      String
   effectiveAt DateTime
-  fetchedAt   DateTime @default(now())
+  createdById String?  @db.Uuid
+  createdAt   DateTime @default(now())
 
-  @@unique([quote, source, effectiveAt])
-  @@index([quote, effectiveAt])
+  @@unique([base, quote, source, effectiveAt])
+  @@index([base, quote, effectiveAt])
   @@map("exchange_rates")
 }

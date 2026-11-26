@@ -21,6 +21,8 @@ export const envSchema = z.object({
     .min(32, 'JWT_ACCESS_SECRET debe tener al menos 32 caracteres'),
   JWT_ACCESS_TTL_SECONDS: z.coerce.number().int().positive().default(900),
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(30),
+  // Intentos por minuto y por IP en registro y login. Solo se sube para pruebas.
+  AUTH_THROTTLE_LIMIT: z.coerce.number().int().min(1).max(1000).default(10),
 });
 
 export type Env = z.infer<typeof envSchema>;
