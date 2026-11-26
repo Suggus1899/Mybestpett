@@ -32,7 +32,9 @@ describe('Auth y roles (e2e)', () => {
     await resetDb(prisma);
   });
 
+  // Deja la base vacía para lo que se ejecute después (por ejemplo Playwright).
   afterAll(async () => {
+    await resetDb(prisma);
     await app.close();
   });
 

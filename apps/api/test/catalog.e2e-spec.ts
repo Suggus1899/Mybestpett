@@ -12,7 +12,11 @@ describe('Catálogo, animales y tasas (e2e)', () => {
     ({ app, prisma } = await createTestApp());
   });
   beforeEach(() => resetDb(prisma));
-  afterAll(() => app.close());
+  // Deja la base vacía para lo que se ejecute después (por ejemplo Playwright).
+  afterAll(async () => {
+    await resetDb(prisma);
+    await app.close();
+  });
 
   async function seedCategory() {
     const perros = await prisma.category.create({

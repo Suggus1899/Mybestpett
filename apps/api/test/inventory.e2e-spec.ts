@@ -11,7 +11,11 @@ describe('Inventario (e2e)', () => {
   beforeAll(async () => {
     ({ app, prisma } = await createTestApp());
   });
-  afterAll(() => app.close());
+  // Deja la base vacía para lo que se ejecute después (por ejemplo Playwright).
+  afterAll(async () => {
+    await resetDb(prisma);
+    await app.close();
+  });
 
   beforeEach(async () => {
     await resetDb(prisma);
