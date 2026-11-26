@@ -51,6 +51,9 @@ const customerInclude = {
       status: true,
       rejectionReason: true,
       createdAt: true,
+      proof: {
+        select: { contentType: true, sizeBytes: true, createdAt: true },
+      },
     },
   },
   history: {
@@ -88,7 +91,12 @@ const staffInclude = {
   },
   payments: {
     orderBy: { createdAt: 'desc' },
-    include: { method: { select: { code: true, name: true } } },
+    include: {
+      method: { select: { code: true, name: true } },
+      proof: {
+        select: { contentType: true, sizeBytes: true, createdAt: true },
+      },
+    },
   },
   history: {
     orderBy: { createdAt: 'asc' },

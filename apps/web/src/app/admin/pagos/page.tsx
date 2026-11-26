@@ -82,6 +82,18 @@ async function Payments({ searchParams }: { searchParams: SearchParams }) {
                       El monto reportado no coincide con el del pedido.
                     </p>
                   )}
+                  {p.proof ? (
+                    <a
+                      href={`/admin/pagos/${p.id}/comprobante`}
+                      target="_blank"
+                      rel="noopener"
+                      className="mt-2 font-bold text-petbf hover:underline"
+                    >
+                      Ver comprobante
+                    </a>
+                  ) : (
+                    <p className="mt-2 text-slate">El cliente no adjuntó comprobante.</p>
+                  )}
                   {p.rejectionReason && <p className="mt-2 text-danger">Motivo: {p.rejectionReason}</p>}
                 </div>
                 {p.status === 'REPORTED' ? (

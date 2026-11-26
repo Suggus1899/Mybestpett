@@ -103,3 +103,20 @@ export async function deliverOrder(orderId: string) {
   await post(`/manage/orders/${orderId}/status`, { status: 'SHIPPED', trackingCode: 'MRW-1' }, token);
   await post(`/manage/orders/${orderId}/status`, { status: 'DELIVERED' }, token);
 }
+
+// Al terminar, rechaza los pagos de prueba que quedaron en revisión: la cola
+// del panel va del más antiguo al más nuevo y, si se acumulan, los de la
+// siguiente corrida quedarían fuera de la primera página.
+export async function settleTestPayments() {
+  const token = await admin();
+  for (;;) {
+    const page = await fetch(`${API}/manage/payments?status=REPORTED&pageSize=60`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then((r) => r.json());
+    const mine = page.items.filter((p: { order: { user: { email: string } } }) => p.order.user.email.startsWith('e2e-'));
+    if (mine.length === 0) return;
+    for (const p of mine) {
+      await post(`/manage/payments/${p.id}/reject`, { reason: 'Limpieza de pruebas' }, token);
+    }
+  }
+}

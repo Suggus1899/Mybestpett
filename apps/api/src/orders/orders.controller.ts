@@ -1,4 +1,17 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Header,
+  Param,
+  Post,
+  Put,
+  Query,
+  StreamableFile,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { z } from 'zod';
 import type { AuthUser } from '../auth/auth.types.js';
 import { CurrentUser, Roles } from '../auth/decorators.js';
@@ -32,8 +45,33 @@ import {
 import { OrdersService } from './orders.service.js';
 import { PaymentsService } from './payments.service.js';
 import { ReturnsService } from './returns.service.js';
+import { MAX_PROOF_BYTES } from './proofs.js';
 
 const id = z.uuid('Id inválido');
+
+// Archivo en memoria: se valida y se guarda en la base. Uno de más de 5 MB
+// se corta al llegar con 413.
+const proofUpload = FileInterceptor('file', {
+  limits: { fileSize: MAX_PROOF_BYTES, files: 1, fields: 0 },
+});
+
+// El comprobante se descarga sin que el navegador lo interprete como página.
+function proofResponse(proof: {
+  data: Buffer;
+  contentType: string;
+  fileName: string;
+}) {
+  const inline = proof.contentType.startsWith('image/');
+  return new StreamableFile(proof.data, {
+    type: proof.contentType,
+    length: proof.data.length,
+    disposition: `${inline ? 'inline' : 'attachment'}; filename="${proof.fileName}"`,
+  });
+}
+
+const noStore = 'private, no-store';
+const sandbox =
+  "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox";
 
 // Pedidos de la persona con sesión.
 @Controller('orders')
@@ -93,6 +131,31 @@ export class OrdersController {
   ) {
     return this.returns.request(user, orderId, dto);
   }
+
+  @Put(':id/payments/:paymentId/proof')
+  @UseInterceptors(proofUpload)
+  attachProof(
+    @CurrentUser() user: AuthUser,
+    @Param('id', { schema: id }) orderId: string,
+    @Param('paymentId', { schema: id }) paymentId: string,
+    @UploadedFile() file: { buffer: Buffer; size: number } | undefined,
+  ) {
+    return this.payments.attachProof(user, orderId, paymentId, file);
+  }
+
+  @Get(':id/payments/:paymentId/proof')
+  @Header('Cache-Control', noStore)
+  @Header('Content-Security-Policy', sandbox)
+  @Header('X-Content-Type-Options', 'nosniff')
+  async proof(
+    @CurrentUser() user: AuthUser,
+    @Param('id', { schema: id }) orderId: string,
+    @Param('paymentId', { schema: id }) paymentId: string,
+  ) {
+    return proofResponse(
+      await this.payments.customerProof(user, orderId, paymentId),
+    );
+  }
 }
 
 // Gestión de pedidos y verificación de pagos: operador de pagos y pedidos.
@@ -139,6 +202,14 @@ export class OrdersManageController {
     @Query({ schema: listPaymentsSchema }) query: ListPaymentsQuery,
   ) {
     return this.payments.list(query);
+  }
+
+  @Get('payments/:id/proof')
+  @Header('Cache-Control', noStore)
+  @Header('Content-Security-Policy', sandbox)
+  @Header('X-Content-Type-Options', 'nosniff')
+  async proof(@Param('id', { schema: id }) paymentId: string) {
+    return proofResponse(await this.payments.staffProof(paymentId));
   }
 
   @Post('payments/:id/verify')

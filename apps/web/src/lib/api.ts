@@ -237,6 +237,7 @@ export interface Order {
     rejectionReason: string | null;
     originBank?: string | null;
     createdAt: string;
+    proof: PaymentProof | null;
   }[];
   history: {
     toStatus: OrderStatus;
@@ -286,8 +287,15 @@ export interface ReturnRow extends Omit<OrderReturn, 'items'> {
   };
 }
 
+export interface PaymentProof {
+  contentType: string;
+  sizeBytes: number;
+  createdAt: string;
+}
+
 export interface PaymentRow {
   id: string;
+  proof: PaymentProof | null;
   reference: string;
   originBank: string | null;
   amount: string;
