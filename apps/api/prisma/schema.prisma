@@ -58,6 +58,8 @@ model User {
   returns          ReturnRequest[]      @relation("ReturnCustomer")
   returnsDecided   ReturnRequest[]      @relation("ReturnDecider")
   returnsRefunded  ReturnRequest[]      @relation("ReturnRefunder")
+  reviews          ProductReview[]      @relation("ReviewAuthor")
+  reviewsModerated ProductReview[]      @relation("ReviewModerator")
 
   @@map("users")
 }
@@ -173,6 +175,7 @@ model Product {
   brand    Brand?           @relation(fields: [brandId], references: [id], onDelete: SetNull)
   variants ProductVariant[]
   images   ProductImage[]
+  reviews  ProductReview[]
 
   @@index([categoryId])
   @@map("products")
@@ -634,4 +637,35 @@ model EmailOutbox {
 
   @@index([status, nextAttemptAt])
   @@map("email_outbox")
+}
+
+enum ReviewStatus {
+  VISIBLE
+  HIDDEN // oculta por el equipo (ofensiva, spam, datos personales…)
+}
+
+// Reseña de un producto. Solo de quien lo compró y lo recibió; una por
+// persona y producto, que puede editar.
+model ProductReview {
+  id            String       @id @default(uuid()) @db.Uuid
+  productId     String       @db.Uuid
+  userId        String       @db.Uuid
+  rating        Int // 1 a 5
+  title         String?
+  body          String
+  status        ReviewStatus @default(VISIBLE)
+  hiddenReason  String?
+  moderatedById String?      @db.Uuid
+  moderatedAt   DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  product     Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user        User    @relation("ReviewAuthor", fields: [userId], references: [id], onDelete: Cascade)
+  moderatedBy User?   @relation("ReviewModerator", fields: [moderatedById], references: [id], onDelete: SetNull)
+
+  @@unique([productId, userId])
+  @@index([productId, status, createdAt])
+  @@index([status, createdAt])
+  @@map("product_reviews")
 }

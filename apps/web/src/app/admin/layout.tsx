@@ -16,6 +16,7 @@ const links = [
   { href: '/admin/pagos', label: 'Pagos' },
   { href: '/admin/pedidos', label: 'Pedidos' },
   { href: '/admin/devoluciones', label: 'Devoluciones' },
+  { href: '/admin/resenas', label: 'Reseñas' },
   { href: '/admin/inventario', label: 'Inventario' },
   { href: '/admin/ajustes', label: 'Ajustes' },
 ];

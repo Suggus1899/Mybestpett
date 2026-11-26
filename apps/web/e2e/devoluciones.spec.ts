@@ -1,48 +1,10 @@
-import { expect, test, type Page } from '@playwright/test';
-import { createProduct, createUser, deliverOrder, login, open, ready, retireTestProducts } from './helpers';
+import { expect, test } from '@playwright/test';
+import { checkout, createUser, deliveredOrder, login, open, ready, retireTestProducts } from './helpers';
 
 // Devolución completa: el cliente la pide, el operador la aprueba y el
 // administrador registra el reembolso.
 
 test.afterAll(retireTestProducts);
-
-// Compra un producto propio con Zelle y deja la pantalla del pedido abierta.
-async function checkout(page: Page, priceUsdCents: number) {
-  const product = await createProduct(priceUsdCents);
-  await open(page, `/productos/${product.slug}`);
-  await page.getByRole('button', { name: `Añadir ${product.name} Unidad al carrito` }).click();
-  await expect(page.getByRole('status').filter({ hasText: 'Añadido al carrito' })).toBeVisible();
-  await open(page, '/checkout');
-  if (await page.getByRole('button', { name: 'Guardar dirección' }).isVisible()) {
-    await page.getByLabel('Quién recibe', { exact: true }).fill('Ana Pérez');
-    await page.getByLabel('Teléfono de contacto', { exact: true }).fill('0412-1234567');
-    await page.getByLabel('Ciudad', { exact: true }).fill('Caracas');
-    await page.getByLabel('Dirección', { exact: true }).fill('Av. Urdaneta');
-    await page.getByLabel('Estado').selectOption('Distrito Capital');
-    await page.getByRole('button', { name: 'Guardar dirección' }).click();
-    await expect(page.getByRole('group', { name: 'Dirección de envío' })).toBeVisible();
-  }
-  await page.getByRole('radio', { name: 'Zelle' }).check();
-  await page.getByLabel(/Acepto los términos/).check();
-  await page.getByRole('button', { name: 'Confirmar pedido' }).click();
-  await page.waitForURL(/\/pedidos\/[0-9a-f-]{36}$/);
-  await ready(page);
-  return product;
-}
-
-async function deliveredOrder(page: Page) {
-  const product = await checkout(page, 1500);
-  const url = page.url();
-  const code = (await page.getByRole('heading', { level: 1 }).textContent())!.replace('Pedido ', '').trim();
-  await page.getByLabel('Número de referencia').fill(`DEV-${Date.now()}`);
-  const now = new Date(Date.now() - 4 * 60 * 60 * 1000 - 60_000).toISOString().slice(0, 16);
-  await page.getByLabel('Fecha y hora del pago').fill(now);
-  await page.getByRole('button', { name: 'Reportar pago' }).click();
-  await expect(page.getByText('Estamos verificando tu pago con el banco.')).toBeVisible();
-  await deliverOrder(url.split('/').pop()!);
-  await open(page, url);
-  return { url, code, product };
-}
 
 test('el cliente pide la devolución, el operador la aprueba y el administrador reembolsa', async ({ page, browser }) => {
   await login(page, await createUser());

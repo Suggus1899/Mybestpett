@@ -63,6 +63,11 @@ export class CatalogPublicController {
   product(@Param('slug', { schema: slugSchema }) slug: string) {
     return this.catalog.getProduct(slug);
   }
+
+  @Get('products/:slug/recommendations')
+  recommendations(@Param('slug', { schema: slugSchema }) slug: string) {
+    return this.catalog.recommendations(slug);
+  }
 }
 
 // Gestión del catálogo: gestor de catálogo (y ADMIN).

@@ -1,12 +1,21 @@
 import Link from 'next/link';
 import { Suspense } from 'react';
-import { OfferBadge, Picture, Price } from '@/components/catalog';
+import { OfferBadge, Picture, Price, ProductCard, Stars } from '@/components/catalog';
+import { ProductReviews } from '@/components/reviews';
 import { AddToCartForm } from '@/components/shop-forms';
 import { api, speciesLabel } from '@/lib/api';
+import { getCurrentUser } from '@/lib/session';
 
 async function Product({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const [product, rates] = await Promise.all([api.product(slug), api.rates()]);
+  const [product, rates, reviews, recommended, user] = await Promise.all([
+    api.product(slug),
+    api.rates(),
+    api.productReviews(slug, {}),
+    api.recommendations(slug),
+    getCurrentUser(),
+  ]);
+  const mine = user ? await api.myReview(slug) : null;
   const rate = rates.usdVes?.rate ?? null;
   const [cover, ...rest] = product.images;
 
@@ -42,6 +51,7 @@ async function Product({ params }: { params: Promise<{ slug: string }> }) {
           <div>
             {product.brand && <p className="text-slate">{product.brand.name}</p>}
             <h1 className="text-3xl sm:text-4xl">{product.name}</h1>
+            <Stars rating={product.rating} size="lg" />
             {product.species.length > 0 && (
               <p className="mt-2 text-sm text-slate">
                 Para: {product.species.map((s) => speciesLabel[s].toLowerCase()).join(', ')}
@@ -106,6 +116,23 @@ async function Product({ params }: { params: Promise<{ slug: string }> }) {
           </p>
         </div>
       </div>
+
+      <ProductReviews slug={product.slug} reviews={reviews} mine={mine} loggedIn={Boolean(user)} />
+
+      {recommended.length > 0 && (
+        <section aria-labelledby="recomendados" className="mt-12">
+          <h2 id="recomendados" className="mb-4 text-2xl">
+            También te puede gustar
+          </h2>
+          <ul className="grid grid-cols-2 gap-4 md:grid-cols-4">
+            {recommended.map((p) => (
+              <li key={p.id}>
+                <ProductCard product={p} rate={rate} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </>
   );
 }

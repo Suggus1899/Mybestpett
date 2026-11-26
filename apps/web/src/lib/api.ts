@@ -39,6 +39,53 @@ export interface ProductCard {
   priceFromUsdCents: number | null;
   compareAtUsdCents: number | null;
   inStock: boolean;
+  rating: Rating;
+}
+
+export interface Rating {
+  average: number | null;
+  count: number;
+}
+
+export interface Review {
+  id: string;
+  rating: number;
+  title: string | null;
+  body: string;
+  author: string;
+  verifiedPurchase: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ReviewPage extends Page<Review> {
+  summary: { count: number; average: number | null; distribution: number[] };
+}
+
+export interface MyReview {
+  canReview: boolean;
+  review: {
+    id: string;
+    rating: number;
+    title: string | null;
+    body: string;
+    status: 'VISIBLE' | 'HIDDEN';
+    hiddenReason: string | null;
+  } | null;
+}
+
+export interface ReviewRow {
+  id: string;
+  rating: number;
+  title: string | null;
+  body: string;
+  status: 'VISIBLE' | 'HIDDEN';
+  hiddenReason: string | null;
+  moderatedAt: string | null;
+  createdAt: string;
+  product: { name: string; slug: string };
+  user: { email: string; firstName: string; lastName: string };
+  moderatedBy: { firstName: string; lastName: string } | null;
 }
 
 export interface ProductDetail {
@@ -59,6 +106,7 @@ export interface ProductDetail {
     compareAtUsdCents: number | null;
     inStock: boolean;
   }[];
+  rating: Rating;
 }
 
 export interface Animal {
@@ -348,6 +396,11 @@ export const api = {
   categories: () => get<Category[]>('/categories'),
   products: (params: Params) => get<Page<ProductCard>>(`/products${qs(params)}`),
   product: (slug: string) => get<ProductDetail>(`/products/${encodeURIComponent(slug)}`),
+  productReviews: (slug: string, params: Params) =>
+    get<ReviewPage>(`/products/${encodeURIComponent(slug)}/reviews${qs(params)}`),
+  myReview: (slug: string) => get<MyReview>(`/products/${encodeURIComponent(slug)}/reviews/mine`, true),
+  recommendations: (slug: string) => get<ProductCard[]>(`/products/${encodeURIComponent(slug)}/recommendations`),
+  manageReviews: (params: Params) => get<Page<ReviewRow>>(`/manage/reviews${qs(params)}`, true),
   animals: (params: Params) => get<Page<Animal>>(`/animals${qs(params)}`),
   animal: (slug: string) => get<Animal>(`/animals/${encodeURIComponent(slug)}`),
   rates: () => get<Rates>('/exchange-rates/current'),

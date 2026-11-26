@@ -345,3 +345,41 @@ export async function refundReturnAction(_prev: ActionState, formData: FormData)
   revalidatePath('/admin', 'layout');
   return { ok: 'Reembolso registrado' };
 }
+
+// ---------- Reseñas ----------
+
+export async function saveReviewAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const slug = text(formData, 'slug');
+  const fields = { rating: text(formData, 'rating'), title: text(formData, 'title'), body: text(formData, 'body') };
+  if (!fields.rating) return { error: 'Elige de 1 a 5 estrellas.', fields };
+  const result = await call(
+    'PUT',
+    `/products/${encodeURIComponent(slug)}/reviews/mine`,
+    { rating: Number(fields.rating), title: fields.title || undefined, body: fields.body },
+    `/productos/${slug}`,
+  );
+  if (!result.ok) return { error: result.error, fields };
+  revalidatePath(`/productos/${slug}`);
+  return { ok: '¡Gracias! Tu reseña quedó guardada.', fields };
+}
+
+export async function deleteReviewAction(formData: FormData) {
+  const slug = text(formData, 'slug');
+  await call('DELETE', `/products/${encodeURIComponent(slug)}/reviews/mine`, undefined, `/productos/${slug}`);
+  revalidatePath(`/productos/${slug}`);
+}
+
+export async function moderateReviewAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const id = text(formData, 'reviewId');
+  const status = text(formData, 'status');
+  const reason = text(formData, 'reason');
+  const result = await call(
+    'PATCH',
+    `/manage/reviews/${encodeURIComponent(id)}`,
+    status === 'HIDDEN' ? { status, reason } : { status },
+    '/admin/resenas',
+  );
+  if (!result.ok) return { error: result.error, fields: { reason } };
+  revalidatePath('/admin/resenas');
+  return { ok: status === 'HIDDEN' ? 'Reseña oculta' : 'Reseña visible' };
+}

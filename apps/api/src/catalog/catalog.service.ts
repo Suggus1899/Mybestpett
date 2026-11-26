@@ -38,8 +38,10 @@ const cardInclude = {
 
 type CardRow = Prisma.ProductGetPayload<{ include: typeof cardInclude }>;
 
+type Rating = { average: number | null; count: number };
+
 // Lo que necesita una tarjeta de producto en un listado.
-function toCard(p: CardRow) {
+function toCard(p: CardRow, rating: Rating = { average: null, count: 0 }) {
   const cheapest = [...p.variants].sort(
     (a, b) => a.priceUsdCents - b.priceUsdCents,
   )[0];
@@ -55,8 +57,13 @@ function toCard(p: CardRow) {
     priceFromUsdCents: cheapest?.priceUsdCents ?? null,
     compareAtUsdCents: cheapest?.compareAtUsdCents ?? null,
     inStock: p.variants.some((v) => v.stock > 0),
+    rating,
   };
 }
+
+// Estados en los que un pedido cuenta como venta.
+const SOLD = ['PAID', 'PREPARING', 'SHIPPED', 'DELIVERED'] as const;
+const RECOMMENDATIONS = 4;
 
 @Injectable()
 export class CatalogService {
@@ -124,7 +131,85 @@ export class CatalogService {
       }),
       this.prisma.product.count({ where }),
     ]);
-    return paged(rows.map(toCard), total, query.page, query.pageSize);
+    const ratings = await this.ratings(rows.map((r) => r.id));
+    return paged(
+      rows.map((r) => toCard(r, ratings.get(r.id))),
+      total,
+      query.page,
+      query.pageSize,
+    );
+  }
+
+  // Promedio y número de reseñas visibles de cada producto.
+  async ratings(productIds: string[]) {
+    const rows = await this.prisma.productReview.groupBy({
+      by: ['productId'],
+      where: { productId: { in: productIds }, status: 'VISIBLE' },
+      _avg: { rating: true },
+      _count: { _all: true },
+    });
+    return new Map<string, Rating>(
+      rows.map((r) => [
+        r.productId,
+        {
+          average:
+            r._avg.rating === null ? null : Math.round(r._avg.rating * 10) / 10,
+          count: r._count._all,
+        },
+      ]),
+    );
+  }
+
+  // "También te puede gustar": primero lo que se compró junto con este
+  // producto en pedidos pagados; si no alcanza, lo más vendido de su categoría.
+  // Solo productos activos con stock.
+  async recommendations(slug: string) {
+    const product = await this.prisma.product.findFirst({
+      where: { slug, isActive: true },
+      select: { id: true, categoryId: true },
+    });
+    if (!product) throw new NotFoundException('Producto no encontrado');
+
+    const together = await this.prisma.$queryRaw<{ productId: string }[]>`
+      SELECT v2."productId"
+      FROM order_items oi1
+      JOIN product_variants v1 ON v1.id = oi1."variantId"
+      JOIN orders o ON o.id = oi1."orderId"
+      JOIN order_items oi2 ON oi2."orderId" = oi1."orderId" AND oi2.id <> oi1.id
+      JOIN product_variants v2 ON v2.id = oi2."variantId"
+      WHERE v1."productId" = ${product.id}::uuid
+        AND v2."productId" <> ${product.id}::uuid
+        AND o.status::text = ANY(${[...SOLD]})
+      GROUP BY v2."productId"
+      ORDER BY COUNT(DISTINCT oi1."orderId") DESC, v2."productId"
+      LIMIT 20`;
+    const bestInCategory = await this.prisma.$queryRaw<{ productId: string }[]>`
+      SELECT p.id AS "productId"
+      FROM products p
+      LEFT JOIN product_variants v ON v."productId" = p.id
+      LEFT JOIN order_items oi ON oi."variantId" = v.id
+      LEFT JOIN orders o ON o.id = oi."orderId" AND o.status::text = ANY(${[...SOLD]})
+      WHERE p."categoryId" = ${product.categoryId}::uuid AND p.id <> ${product.id}::uuid
+      GROUP BY p.id
+      ORDER BY COALESCE(SUM(CASE WHEN o.id IS NOT NULL THEN oi.quantity END), 0) DESC, p."createdAt" DESC
+      LIMIT 20`;
+    const ids = [
+      ...new Set([...together, ...bestInCategory].map((r) => r.productId)),
+    ];
+    const rows = await this.prisma.product.findMany({
+      where: {
+        id: { in: ids },
+        isActive: true,
+        variants: { some: { isActive: true, stock: { gt: 0 } } },
+      },
+      include: cardInclude,
+    });
+    const picked = ids
+      .map((id) => rows.find((r) => r.id === id))
+      .filter((r): r is CardRow => r !== undefined)
+      .slice(0, RECOMMENDATIONS);
+    const ratings = await this.ratings(picked.map((r) => r.id));
+    return picked.map((r) => toCard(r, ratings.get(r.id)));
   }
 
   async getProduct(slug: string, staff = false) {
@@ -156,9 +241,14 @@ export class CatalogService {
       throw new NotFoundException('Producto no encontrado');
     }
     if (staff) return product;
+    const rating = (await this.ratings([product.id])).get(product.id) ?? {
+      average: null,
+      count: 0,
+    };
     // El público ve si hay stock, no la cantidad exacta.
     return {
       ...product,
+      rating,
       variants: product.variants.map(({ stock, ...v }) => ({
         ...v,
         inStock: stock > 0,
