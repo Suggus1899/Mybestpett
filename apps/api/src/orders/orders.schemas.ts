@@ -1,6 +1,10 @@
 import { z } from 'zod';
 import { paginationShape } from '../common/pagination.js';
-import { OrderStatus, PaymentStatus } from '../generated/prisma/enums.js';
+import {
+  OrderStatus,
+  PaymentStatus,
+  ReturnStatus,
+} from '../generated/prisma/enums.js';
 
 const id = z.uuid('Id inválido');
 
@@ -11,20 +15,23 @@ export const checkoutSchema = z.object({
   acceptTerms: z.literal(true, 'Debes aceptar los términos y condiciones'),
 });
 
+// Referencia bancaria normalizada: sin espacios y en mayúsculas, para
+// detectar repeticiones.
+const referenceSchema = z
+  .string()
+  .transform((v) => v.replace(/\s+/g, '').toUpperCase())
+  .pipe(
+    z
+      .string()
+      .regex(
+        /^[A-Z0-9-]{4,40}$/,
+        'Referencia inválida: de 4 a 40 letras, números o guiones',
+      ),
+  );
+
 // Lo que el cliente declara haber pagado. El equipo lo compara con el banco.
 export const reportPaymentSchema = z.object({
-  // Se normaliza: sin espacios y en mayúsculas, para detectar repeticiones.
-  reference: z
-    .string()
-    .transform((v) => v.replace(/\s+/g, '').toUpperCase())
-    .pipe(
-      z
-        .string()
-        .regex(
-          /^[A-Z0-9-]{4,40}$/,
-          'Referencia inválida: de 4 a 40 letras, números o guiones',
-        ),
-    ),
+  reference: referenceSchema,
   originBank: z.string().trim().max(80).optional(),
   amount: z
     .string()
@@ -82,6 +89,51 @@ export const listPaymentsSchema = z.object({
   status: z.enum(PaymentStatus).default('REPORTED'),
 });
 
+// ---------- Devoluciones ----------
+
+export const requestReturnSchema = z.object({
+  reason: z
+    .string()
+    .trim()
+    .min(10, 'Cuéntanos el motivo (mínimo 10 caracteres)')
+    .max(500, 'El motivo admite hasta 500 caracteres'),
+  items: z
+    .array(
+      z.object({
+        orderItemId: id,
+        quantity: z
+          .number()
+          .int('La cantidad debe ser un número entero')
+          .min(1, 'La cantidad mínima es 1')
+          .max(20, 'La cantidad máxima es 20'),
+      }),
+    )
+    .min(1, 'Elige al menos un producto')
+    .max(50)
+    .refine(
+      (items) => new Set(items.map((i) => i.orderItemId)).size === items.length,
+      'Un producto aparece dos veces',
+    ),
+});
+
+export const approveReturnSchema = z.object({
+  note: z.string().trim().max(300).optional(),
+});
+
+export const rejectReturnSchema = rejectPaymentSchema;
+
+// El administrador ya devolvió el dinero por el mismo método del pedido.
+export const refundReturnSchema = z.object({
+  reference: referenceSchema,
+  // true si el producto llegó en buen estado y vuelve a la venta.
+  restock: z.boolean('Indica si el producto vuelve al inventario'),
+});
+
+export const listReturnsSchema = z.object({
+  ...paginationShape,
+  status: z.enum(ReturnStatus).default('REQUESTED'),
+});
+
 export type CheckoutDto = z.infer<typeof checkoutSchema>;
 export type ReportPaymentDto = z.infer<typeof reportPaymentSchema>;
 export type RejectPaymentDto = z.infer<typeof rejectPaymentSchema>;
@@ -90,3 +142,7 @@ export type AdvanceOrderDto = z.infer<typeof advanceOrderSchema>;
 export type ListMyOrdersQuery = z.infer<typeof listMyOrdersSchema>;
 export type ListOrdersManageQuery = z.infer<typeof listOrdersManageSchema>;
 export type ListPaymentsQuery = z.infer<typeof listPaymentsSchema>;
+export type RequestReturnDto = z.infer<typeof requestReturnSchema>;
+export type ApproveReturnDto = z.infer<typeof approveReturnSchema>;
+export type RefundReturnDto = z.infer<typeof refundReturnSchema>;
+export type ListReturnsQuery = z.infer<typeof listReturnsSchema>;

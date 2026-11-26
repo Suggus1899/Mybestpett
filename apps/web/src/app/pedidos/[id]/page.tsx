@@ -1,10 +1,12 @@
 import type { Metadata } from 'next';
 import { notFound, redirect } from 'next/navigation';
 import { Suspense } from 'react';
-import { OrderHistory, OrderItems, OrderPayments, OrderShipping, StatusBadge } from '@/components/orders';
+import { OrderHistory, OrderItems, OrderPayments, OrderReturns, OrderShipping, StatusBadge } from '@/components/orders';
+import { ReturnRequestForm } from '@/components/returns-forms';
 import { CancelOrderForm, ReportPaymentForm } from '@/components/shop-forms';
 import { api } from '@/lib/api';
 import { formatDateTime, formatMoney } from '@/lib/format';
+import { canRequestReturn } from '@/lib/orders';
 import { getCurrentUser } from '@/lib/session';
 
 export const metadata: Metadata = { title: 'Pedido', robots: { index: false } };
@@ -51,11 +53,28 @@ async function OrderView({ params }: { params: Promise<{ id: string }> }) {
         </p>
       )}
 
+      {canRequestReturn(order) && (
+        <section
+          aria-labelledby="devolver"
+          className="mb-6 flex flex-col gap-4 rounded-[var(--radius-card)] border border-line bg-white p-5"
+        >
+          <h2 id="devolver" className="text-2xl">
+            ¿Algo no salió bien?
+          </h2>
+          <p>
+            Puedes pedir una devolución hasta el {formatDateTime(order.returnUntil!)}. El alimento y los productos de
+            higiene no se devuelven, y el envío no se reembolsa. Te devolvemos el dinero por {order.paymentMethod.name}.
+          </p>
+          <ReturnRequestForm order={order} />
+        </section>
+      )}
+
       <div className="grid gap-6 md:grid-cols-2">
         <OrderItems order={order} />
         <div className="flex flex-col gap-6">
           <OrderShipping order={order} />
           <OrderPayments order={order} />
+          <OrderReturns order={order} />
           <OrderHistory order={order} />
         </div>
       </div>

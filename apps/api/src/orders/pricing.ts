@@ -3,6 +3,7 @@ import type { Currency } from '../generated/prisma/enums.js';
 
 type Decimal = Prisma.Decimal;
 export const PAYMENT_WINDOW_MS = 2 * 60 * 60 * 1000; // 2 horas para reportar el pago
+export const RETURN_WINDOW_MS = 3 * 24 * 60 * 60 * 1000; // 3 días desde la entrega
 
 export interface FrozenRates {
   usdVes: Decimal | null; // Bs por 1 USD

@@ -45,6 +45,9 @@ model User {
   orders           Order[]
   orderChanges     OrderStatusHistory[]
   paymentsVerified Payment[]
+  returns          ReturnRequest[]      @relation("ReturnCustomer")
+  returnsDecided   ReturnRequest[]      @relation("ReturnDecider")
+  returnsRefunded  ReturnRequest[]      @relation("ReturnRefunder")
 
   @@map("users")
 }
@@ -446,6 +449,7 @@ model Order {
   history       OrderStatusHistory[]
   payments      Payment[]
   movements     InventoryMovement[]
+  returns       ReturnRequest[]
 
   @@index([userId, createdAt])
   @@index([status, paymentDueAt])
@@ -464,8 +468,9 @@ model OrderItem {
   quantity          Int
   isReturnable      Boolean
 
-  order   Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  variant ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  order       Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variant     ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  returnItems ReturnItem[]
 
   @@index([orderId])
   @@map("order_items")
@@ -519,4 +524,59 @@ model Payment {
   @@index([status, createdAt])
   @@index([orderId])
   @@map("payments")
+}
+
+enum ReturnStatus {
+  REQUESTED // el cliente la pidió; el equipo la revisa
+  APPROVED // aceptada: falta recibir el producto y reembolsar
+  REJECTED
+  REFUNDED // el administrador devolvió el dinero
+}
+
+// Devolución de un pedido entregado, como máximo 3 días después de la entrega.
+// El reembolso va por el mismo método y en la misma moneda del pedido.
+model ReturnRequest {
+  id              String       @id @default(uuid()) @db.Uuid
+  orderId         String       @db.Uuid
+  userId          String       @db.Uuid
+  status          ReturnStatus @default(REQUESTED)
+  reason          String
+  // Monto congelado al pedirla, con las tasas del pedido. El envío no se reembolsa.
+  refundUsdCents  Int
+  currency        Currency
+  refundAmount    Decimal      @db.Decimal(20, 8)
+  decisionNote    String?
+  decidedById     String?      @db.Uuid
+  decidedAt       DateTime?
+  refundReference String?
+  restocked       Boolean      @default(false)
+  refundedById    String?      @db.Uuid
+  refundedAt      DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  order      Order        @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  user       User         @relation("ReturnCustomer", fields: [userId], references: [id], onDelete: Restrict)
+  decidedBy  User?        @relation("ReturnDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+  refundedBy User?        @relation("ReturnRefunder", fields: [refundedById], references: [id], onDelete: SetNull)
+  items      ReturnItem[]
+
+  // Además, un índice único parcial impide dos devoluciones abiertas del mismo pedido.
+  @@index([status, createdAt])
+  @@index([orderId])
+  @@map("return_requests")
+}
+
+model ReturnItem {
+  id          String @id @default(uuid()) @db.Uuid
+  returnId    String @db.Uuid
+  orderItemId String @db.Uuid
+  quantity    Int
+
+  request   ReturnRequest @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  orderItem OrderItem     @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+
+  @@unique([returnId, orderItemId])
+  @@index([orderItemId])
+  @@map("return_items")
 }

@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import type { Order, OrderStatus } from '@/lib/api';
 import { formatDateTime, formatMoney, formatUsd } from '@/lib/format';
-import { orderStatusClass, orderStatusLabel, paymentStatusLabel } from '@/lib/orders';
+import { orderStatusClass, orderStatusLabel, paymentStatusLabel, returnStatusLabel } from '@/lib/orders';
 
 // Piezas del pedido que comparten la cuenta del cliente y el panel.
 
@@ -124,6 +124,38 @@ export function OrderHistory({ order }: { order: Order }) {
           </li>
         ))}
       </ol>
+    </section>
+  );
+}
+
+export function OrderReturns({ order }: { order: Order }) {
+  if (order.returns.length === 0) return null;
+  const name = (id: string) => order.items.find((i) => i.id === id)?.productName ?? 'Producto';
+  return (
+    <section aria-labelledby="devoluciones" className="rounded-[var(--radius-card)] border border-line bg-white p-5">
+      <h2 id="devoluciones" className="mb-3 text-xl">
+        Devoluciones
+      </h2>
+      <ul className="flex flex-col gap-3">
+        {order.returns.map((r) => (
+          <li key={r.id} className="border-b border-line pb-3 last:border-0 last:pb-0">
+            <p className="font-bold">
+              {returnStatusLabel[r.status]} · {formatMoney(r.refundAmount, r.currency)}
+            </p>
+            <p className="text-sm">{r.items.map((l) => `${l.quantity} × ${name(l.orderItemId)}`).join(', ')}</p>
+            <p className="text-sm text-slate">Motivo: {r.reason}</p>
+            {r.decisionNote && (
+              <p className={r.status === 'REJECTED' ? 'font-bold text-danger' : 'text-slate'}>{r.decisionNote}</p>
+            )}
+            {r.refundedAt && (
+              <p className="text-sm text-slate">
+                Reembolsado el {formatDateTime(r.refundedAt)}
+                {r.refundReference && ` · Ref. ${r.refundReference}`}
+              </p>
+            )}
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }
