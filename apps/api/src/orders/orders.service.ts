@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { AddressesService } from '../addresses/addresses.service.js';
 import { AuditService } from '../audit/audit.service.js';
+import { EmailService } from '../emails/email.service.js';
 import type { AuthUser } from '../auth/auth.types.js';
 import { CartService, lineIssue } from '../cart/cart.service.js';
 import { paged, paginate } from '../common/pagination.js';
@@ -139,6 +140,7 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
     private readonly cart: CartService,
     private readonly addresses: AddressesService,
     private readonly rates: RatesService,
+    private readonly emails: EmailService,
   ) {}
 
   // Cada minuto cancela los pedidos sin pago reportado tras 2 horas.
@@ -279,6 +281,7 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
         })),
       });
       await tx.cartItem.deleteMany({ where: { userId: user.id } });
+      await this.emails.orderEvent(tx, created.id, 'PENDING_PAYMENT');
       await this.audit.record(
         {
           actorId: user.id,
@@ -531,6 +534,7 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
         note: note ?? null,
       },
     });
+    await this.emails.orderEvent(tx, id, data.status, note, current?.status);
   }
 
   // Cancela y devuelve el stock. Devuelve false si el pedido ya no estaba en `from`.

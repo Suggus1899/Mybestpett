@@ -288,6 +288,7 @@ Una persona puede tener varios roles a la vez.
 | **Carrito y pedidos** | Checkout, pago reportado, verificación del equipo y despacho | 🚧 |
 | **Verificación en dos pasos** | Obligatoria para el equipo | 🚧 |
 | **Devoluciones** | Solicitud dentro de 3 días, revisión del operador y reembolso del administrador | ✅ |
+| **Correos al cliente** | Aviso de pedido creado, pago confirmado o rechazado, envío, entrega, cancelación y devoluciones, con bandeja de salida y reintentos | ✅ |
 | **Reservas y adopciones** | Reserva con señal y solicitud de adopción con cuestionario | ⏳ |
 | **App móvil** | Flutter sobre la misma API: tienda, animales, carrito, checkout, pago y pedidos | 🚧 |
 
@@ -308,6 +309,10 @@ Una persona puede tener varios roles a la vez.
 | `AUTH_THROTTLE_LIMIT` | ❌ | `10` | Intentos por minuto en registro y login |
 | `THROTTLE_LIMIT` | ❌ | `120` | Peticiones por minuto y por IP en el resto de rutas |
 | `WEB_PROXY_SECRET` | ✅ prod | — | Secreto compartido con la web para aceptar la IP real del visitante (32+ caracteres) |
+| `EMAIL_PROVIDER` | ❌ | `log` | `log` escribe los correos en el registro; `resend` los envía con Resend |
+| `RESEND_API_KEY` | Con `resend` | — | Clave de la API de Resend |
+| `EMAIL_FROM` | ❌ | `Petbf <no-responder@petbf.local>` | Remitente de los correos (dominio verificado en Resend) |
+| `WEB_URL` | ❌ | `http://localhost:3000` | Dirección pública de la tienda para los enlaces de los correos; cámbiala en producción |
 | `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` | ❌ | — | Cuenta de administrador que crea el seed (contraseña de 12+ caracteres) |
 | `SEED_DEMO` | ❌ | `false` | Añade datos de ejemplo; no se permite en producción |
 
