@@ -2,17 +2,21 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { AddressesModule } from './addresses/addresses.module.js';
 import { AnimalsModule } from './animals/animals.module.js';
 import { AuditModule } from './audit/audit.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { JwtAuthGuard } from './auth/jwt-auth.guard.js';
 import { RolesGuard } from './auth/roles.guard.js';
 import { CatalogModule } from './catalog/catalog.module.js';
+import { CartModule } from './cart/cart.module.js';
 import { PrismaExceptionFilter } from './common/prisma-exception.filter.js';
 import { validateEnv } from './config/env.js';
 import { HealthController } from './health/health.controller.js';
+import { OrdersModule } from './orders/orders.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { RatesModule } from './rates/rates.module.js';
+import { StoreModule } from './store/store.module.js';
 import { UsersModule } from './users/users.module.js';
 
 @Module({
@@ -31,6 +35,10 @@ import { UsersModule } from './users/users.module.js';
     CatalogModule,
     AnimalsModule,
     RatesModule,
+    AddressesModule,
+    StoreModule,
+    CartModule,
+    OrdersModule,
   ],
   controllers: [HealthController],
   providers: [

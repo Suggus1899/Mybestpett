@@ -36,10 +36,15 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  roles        UserRole[] @relation("UserRoles")
-  rolesGranted UserRole[] @relation("RolesGranted")
-  sessions     Session[]
-  auditLogs    AuditLog[]
+  roles            UserRole[]           @relation("UserRoles")
+  rolesGranted     UserRole[]           @relation("RolesGranted")
+  sessions         Session[]
+  auditLogs        AuditLog[]
+  addresses        Address[]
+  cartItems        CartItem[]
+  orders           Order[]
+  orderChanges     OrderStatusHistory[]
+  paymentsVerified Payment[]
 
   @@map("users")
 }
@@ -171,7 +176,10 @@ model ProductVariant {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  product    Product             @relation(fields: [productId], references: [id], onDelete: Cascade)
+  cartItems  CartItem[]
+  orderItems OrderItem[]
+  movements  InventoryMovement[]
 
   @@index([productId])
   @@map("product_variants")
@@ -271,4 +279,244 @@ model ExchangeRate {
   @@unique([base, quote, source, effectiveAt])
   @@index([base, quote, effectiveAt])
   @@map("exchange_rates")
+}
+
+// ---------- Inventario ----------
+
+enum InventoryReason {
+  RESTOCK // reposición
+  SALE // venta (al crear el pedido)
+  CANCELLATION // el pedido se canceló y el stock vuelve
+  RETURN // devolución
+  ADJUSTMENT // ajuste manual
+}
+
+// Cada cambio de stock deja un movimiento en la misma transacción.
+model InventoryMovement {
+  id            String          @id @default(uuid()) @db.Uuid
+  variantId     String          @db.Uuid
+  quantityDelta Int // negativo cuando sale stock
+  reason        InventoryReason
+  note          String?
+  orderId       String?         @db.Uuid
+  createdById   String?         @db.Uuid // null si lo hizo el sistema
+  createdAt     DateTime        @default(now())
+
+  variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  order   Order?         @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([variantId, createdAt])
+  @@map("inventory_movements")
+}
+
+// ---------- Clientes: direcciones y carrito ----------
+
+// Estado, ciudad y punto de referencia, como se usan en Venezuela.
+model Address {
+  id             String   @id @default(uuid()) @db.Uuid
+  userId         String   @db.Uuid
+  recipientName  String
+  phone          String
+  state          String // uno de los 24 estados (lo valida la API)
+  city           String
+  municipality   String?
+  line1          String
+  referencePoint String?
+  isDefault      Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("addresses")
+}
+
+// Un carrito por cliente con sesión: una fila por presentación.
+model CartItem {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  variantId String   @db.Uuid
+  quantity  Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user    User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  variant ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, variantId])
+  @@map("cart_items")
+}
+
+// ---------- Envíos y métodos de pago ----------
+
+model ShippingZone {
+  id               String   @id @default(uuid()) @db.Uuid
+  name             String
+  states           String[] // estados que cubre
+  carrier          String // agencia o "Delivery propio"
+  priceUsdCents    Int
+  freeOverUsdCents Int      @default(2500) // envío gratis desde 25 $
+  isActive         Boolean  @default(true)
+  sortOrder        Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@map("shipping_zones")
+}
+
+enum PaymentMethodCode {
+  PAGO_MOVIL
+  TRANSFER_VES
+  ZELLE
+  CASH_USD
+  TRANSFER_EUR
+  USDT
+}
+
+// Los datos de cuenta que ve el cliente salen de aquí y los edita el administrador.
+model PaymentMethod {
+  id           String            @id @default(uuid()) @db.Uuid
+  code         PaymentMethodCode @unique
+  name         String
+  currency     Currency
+  instructions String
+  isActive     Boolean           @default(true)
+  sortOrder    Int               @default(0)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  orders   Order[]
+  payments Payment[]
+
+  @@map("payment_methods")
+}
+
+// ---------- Pedidos y pagos ----------
+
+enum OrderStatus {
+  PENDING_PAYMENT // creado; el cliente tiene 2 horas para reportar el pago
+  PAYMENT_REPORTED // el cliente reportó; falta que el equipo lo verifique
+  PAID // el equipo verificó el pago
+  PREPARING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+// Precios, tasas y dirección se copian al pedido: un cambio posterior no altera el pasado.
+model Order {
+  id               String      @id @default(uuid()) @db.Uuid
+  number           Int         @unique @default(autoincrement()) // se muestra como PB-000123
+  userId           String      @db.Uuid
+  status           OrderStatus @default(PENDING_PAYMENT)
+  paymentMethodId  String      @db.Uuid
+  chargedCurrency  Currency
+  // Tasas BCV congeladas al crear el pedido (Bs por 1 USD y por 1 EUR).
+  usdVesRate       Decimal?    @db.Decimal(20, 8)
+  eurVesRate       Decimal?    @db.Decimal(20, 8)
+  rateEffectiveAt  DateTime?
+  subtotalUsdCents Int
+  shippingUsdCents Int
+  totalUsdCents    Int
+  totalCharged     Decimal     @db.Decimal(20, 8) // monto exacto a pagar en chargedCurrency
+  recipientName    String
+  phone            String
+  state            String
+  city             String
+  municipality     String?
+  line1            String
+  referencePoint   String?
+  shippingZoneName String
+  carrier          String
+  trackingCode     String?
+  paymentDueAt     DateTime
+  termsAcceptedAt  DateTime
+  paidAt           DateTime?
+  shippedAt        DateTime?
+  deliveredAt      DateTime?
+  cancelledAt      DateTime?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  user          User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
+  paymentMethod PaymentMethod        @relation(fields: [paymentMethodId], references: [id], onDelete: Restrict)
+  items         OrderItem[]
+  history       OrderStatusHistory[]
+  payments      Payment[]
+  movements     InventoryMovement[]
+
+  @@index([userId, createdAt])
+  @@index([status, paymentDueAt])
+  @@map("orders")
+}
+
+model OrderItem {
+  id                String  @id @default(uuid()) @db.Uuid
+  orderId           String  @db.Uuid
+  variantId         String? @db.Uuid
+  productName       String
+  productSlug       String
+  variantName       String
+  sku               String
+  unitPriceUsdCents Int
+  quantity          Int
+  isReturnable      Boolean
+
+  order   Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variant ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@map("order_items")
+}
+
+// Un registro por cada cambio de estado del pedido.
+model OrderStatusHistory {
+  id          String       @id @default(uuid()) @db.Uuid
+  orderId     String       @db.Uuid
+  fromStatus  OrderStatus?
+  toStatus    OrderStatus
+  changedById String?      @db.Uuid // null si lo hizo el sistema
+  note        String?
+  createdAt   DateTime     @default(now())
+
+  order     Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  changedBy User? @relation(fields: [changedById], references: [id], onDelete: SetNull)
+
+  @@index([orderId, createdAt])
+  @@map("order_status_history")
+}
+
+enum PaymentStatus {
+  REPORTED
+  VERIFIED
+  REJECTED
+}
+
+// Pago reportado por el cliente. Solo cuenta cuando el equipo lo verifica.
+// Un índice único parcial (en la migración) impide que una referencia
+// verificada pague dos pedidos con el mismo método.
+model Payment {
+  id              String        @id @default(uuid()) @db.Uuid
+  orderId         String        @db.Uuid
+  methodId        String        @db.Uuid
+  currency        Currency
+  amount          Decimal       @db.Decimal(20, 8)
+  reference       String // normalizada: sin espacios y en mayúsculas
+  originBank      String?
+  paidAt          DateTime
+  status          PaymentStatus @default(REPORTED)
+  verifiedById    String?       @db.Uuid
+  verifiedAt      DateTime?
+  rejectionReason String?
+  createdAt       DateTime      @default(now())
+
+  order      Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  method     PaymentMethod @relation(fields: [methodId], references: [id], onDelete: Restrict)
+  verifiedBy User?         @relation(fields: [verifiedById], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([orderId])
+  @@map("payments")
 }

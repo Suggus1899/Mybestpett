@@ -87,6 +87,19 @@ export class RatesService {
     return this.current();
   }
 
+  // Las tasas que congela un pedido al crearse.
+  async forOrder() {
+    const [usd, eur] = await Promise.all([
+      this.latest('USD'),
+      this.latest('EUR'),
+    ]);
+    return {
+      usdVes: usd?.rate ?? null,
+      eurVes: eur?.rate ?? null,
+      effectiveAt: usd?.effectiveAt ?? null,
+    };
+  }
+
   private latest(base: Currency) {
     return this.prisma.exchangeRate.findFirst({
       where: {

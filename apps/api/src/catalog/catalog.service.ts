@@ -334,6 +334,16 @@ export class CatalogService {
           changes[key] = { from: before[key], to: variant[key] };
         }
       }
+      if (changes.stock) {
+        await tx.inventoryMovement.create({
+          data: {
+            variantId: id,
+            quantityDelta: variant.stock - before.stock,
+            reason: 'ADJUSTMENT',
+            createdById: actor.id,
+          },
+        });
+      }
       if (Object.keys(changes).length > 0) {
         await this.audit.record(
           {

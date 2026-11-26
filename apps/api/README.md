@@ -54,6 +54,18 @@ pnpm test:e2e                 # usa una base desechable: la vacía en cada prueb
 | GET, POST, PATCH, PUT | /v1/manage/products, /variants, /categories, /brands | CATALOG_MANAGER |
 | POST, PATCH | /v1/manage/animals | CATALOG_MANAGER (venta), ADOPTION_COORDINATOR (adopción) |
 | GET | /v1/manage/inventory, /v1/manage/inventory/summary | CATALOG_MANAGER, ORDERS_OPERATOR |
+| GET | /v1/shipping-zones, /v1/payment-methods | público (solo activos) |
+| GET, POST, PATCH | /v1/manage/shipping-zones, /v1/manage/payment-methods | ADMIN |
+| GET, POST, PATCH, DELETE | /v1/addresses | con sesión (las propias) |
+| GET, POST, PUT, DELETE | /v1/cart, /v1/cart/items/:variantId | con sesión |
+| POST | /v1/orders | con sesión (checkout) |
+| GET | /v1/orders, /v1/orders/:id | con sesión (los propios) |
+| POST | /v1/orders/:id/cancel | con sesión (antes de reportar el pago) |
+| POST | /v1/orders/:id/payments | con sesión (reportar el pago) |
+| GET | /v1/manage/orders, /v1/manage/orders/:id | ORDERS_OPERATOR |
+| POST | /v1/manage/orders/:id/status, /v1/manage/orders/:id/cancel | ORDERS_OPERATOR |
+| GET | /v1/manage/payments | ORDERS_OPERATOR (cola de pagos reportados) |
+| POST | /v1/manage/payments/:id/verify, /v1/manage/payments/:id/reject | ORDERS_OPERATOR |
 
 `ADMIN` pasa todas las comprobaciones de rol.
 
@@ -63,3 +75,21 @@ pnpm test:e2e                 # usa una base desechable: la vacía en cada prueb
   parcial pisaría campos que no se enviaron (pasó con el stock y está cubierto por pruebas).
 - Zod descarta los campos desconocidos: un cliente no puede colarse `roles` o `isActive`.
 - Precios en céntimos enteros; imágenes solo `https`; tasas como texto decimal.
+
+## Flujo de compra
+
+1. El cliente arma el carrito (precio siempre actual) y hace el checkout con
+   dirección, zona de envío, método de pago y aceptación de términos.
+2. En una sola transacción la API revalida stock y precios, congela la tasa BCV,
+   descuenta el stock con un `UPDATE` condicionado (`stock >= cantidad`), copia
+   nombre, SKU y precio de cada línea, y crea el pedido en `PENDING_PAYMENT`
+   con 2 horas para reportar el pago.
+3. El cliente reporta referencia, monto y fecha: `PAYMENT_REPORTED`.
+4. El operador verifica contra el banco (`PAID`) o rechaza con motivo; al
+   rechazar, el pedido vuelve a `PENDING_PAYMENT` con otras 2 horas.
+5. `PAID` → `PREPARING` → `SHIPPED` (con número de guía) → `DELIVERED`.
+
+Reglas: una referencia verificada no paga dos pedidos con el mismo método
+(índice único parcial en la base); nadie revisa el pago de su propio pedido;
+cada minuto se cancelan los pedidos vencidos sin reporte y el stock vuelve;
+cada cambio de stock deja un registro en `inventory_movements`.
