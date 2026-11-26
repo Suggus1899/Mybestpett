@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { AuditService } from '../audit/audit.service.js';
 import { EmailService } from '../emails/email.service.js';
+import { LoyaltyService } from '../loyalty/loyalty.service.js';
 import type { AuthUser } from '../auth/auth.types.js';
 import { paged, paginate } from '../common/pagination.js';
 import { Prisma } from '../generated/prisma/client.js';
@@ -57,6 +58,7 @@ export class ReturnsService {
     private readonly audit: AuditService,
     private readonly orders: OrdersService,
     private readonly emails: EmailService,
+    private readonly loyalty: LoyaltyService,
   ) {}
 
   // ---------- Cliente ----------
@@ -204,6 +206,15 @@ export class ReturnsService {
         );
       }
       await this.emails.returnEvent(tx, id, 'refunded');
+      await this.loyalty.onRefund(
+        tx,
+        current.order.id,
+        id,
+        current.items.reduce(
+          (n, l) => n + l.orderItem.unitPriceUsdCents * l.quantity,
+          0,
+        ),
+      );
       if (dto.restock) {
         const lines = current.items.filter((l) => l.orderItem.variantId);
         for (const line of lines) {

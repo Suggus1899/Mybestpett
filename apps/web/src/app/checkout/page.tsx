@@ -19,12 +19,13 @@ async function Checkout({ searchParams }: { searchParams: SearchParams }) {
   const code = typeof raw === 'string' ? raw.trim().slice(0, 30) : '';
   // Con ?cupon= se prueba el cupón; si no aplica, se muestra el motivo y se
   // sigue con el carrito sin cupón.
-  const [quoted, addresses, zones, methods, rates] = await Promise.all([
+  const [quoted, addresses, zones, methods, rates, points] = await Promise.all([
     code ? api.cartWithCoupon(code) : api.cart().then((cart) => ({ cart })),
     api.addresses(),
     api.shippingZones(),
     api.paymentMethods(),
     api.rates(),
+    api.points({ pageSize: 1 }),
   ]);
   const couponError = 'error' in quoted ? quoted.error : null;
   const cart = 'cart' in quoted ? quoted.cart : await api.cart();
@@ -47,6 +48,7 @@ async function Checkout({ searchParams }: { searchParams: SearchParams }) {
             methods={methods}
             itemsTotalUsdCents={cart.itemsTotalUsdCents}
             couponCode={cart.coupon?.code}
+            pointsBalance={points.balance}
             usdVes={rates.usdVes?.rate ?? null}
             eurVes={rates.eurVes?.rate ?? null}
           />

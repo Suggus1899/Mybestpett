@@ -16,6 +16,8 @@ import { paged, paginate } from '../common/pagination.js';
 import type { OrderStatus } from '../generated/prisma/enums.js';
 import { Prisma } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { LoyaltyService } from '../loyalty/loyalty.service.js';
+import { POINT_VALUE_CENTS, REDEEM_STEP } from '../loyalty/points.js';
 import { PromotionsService } from '../promotions/promotions.service.js';
 import { RatesService } from '../rates/rates.service.js';
 import type {
@@ -143,6 +145,7 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
     private readonly rates: RatesService,
     private readonly emails: EmailService,
     private readonly promotions: PromotionsService,
+    private readonly loyalty: LoyaltyService,
   ) {}
 
   // Cada minuto cancela los pedidos sin pago reportado tras 2 horas.
@@ -209,9 +212,27 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
         { lock: true },
       );
       const subtotal = quote.subtotalUsdCents;
+      // Puntos: después de combos y cupón, solo sobre los productos.
+      const pointsDiscount = dto.points * POINT_VALUE_CENTS;
+      if (dto.points > 0) {
+        const balance = await this.loyalty.balance(tx, user.id);
+        if (dto.points > balance) {
+          throw new BadRequestException(`Tienes ${balance} puntos`);
+        }
+        if (pointsDiscount > quote.itemsTotalUsdCents) {
+          const max =
+            Math.floor(
+              quote.itemsTotalUsdCents / POINT_VALUE_CENTS / REDEEM_STEP,
+            ) * REDEEM_STEP;
+          throw new BadRequestException(
+            `En este pedido puedes usar como máximo ${max} puntos`,
+          );
+        }
+      }
+      const itemsTotal = quote.itemsTotalUsdCents - pointsDiscount;
       // El envío gratis se mide con lo que se paga por los productos.
-      const shipping = shippingCost(quote.itemsTotalUsdCents, zone);
-      const total = quote.itemsTotalUsdCents + shipping;
+      const shipping = shippingCost(itemsTotal, zone);
+      const total = itemsTotal + shipping;
       let totalCharged: Prisma.Decimal;
       try {
         totalCharged = chargedAmount(total, method.currency, rates);
@@ -255,6 +276,8 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
           couponDiscountUsdCents: quote.couponDiscountUsdCents,
           couponId: quote.coupon?.id ?? null,
           couponCode: quote.coupon?.code ?? null,
+          pointsRedeemed: dto.points,
+          pointsDiscountUsdCents: pointsDiscount,
           shippingUsdCents: shipping,
           totalUsdCents: total,
           totalCharged,
@@ -295,6 +318,7 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
           createdById: user.id,
         })),
       });
+      await this.loyalty.redeem(tx, user.id, created.id, dto.points);
       await tx.cartItem.deleteMany({ where: { userId: user.id } });
       await this.emails.orderEvent(tx, created.id, 'PENDING_PAYMENT');
       await this.audit.record(
@@ -439,6 +463,7 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
 
     await this.prisma.$transaction(async (tx) => {
       await this.transition(tx, id, [from], data, actor.id, dto.note);
+      if (dto.status === 'DELIVERED') await this.loyalty.earn(tx, id);
       await this.audit.record(
         {
           actorId: actor.id,
@@ -578,6 +603,7 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
       if (actorId === null && error instanceof ConflictException) return false;
       throw error;
     }
+    await this.loyalty.restoreOnCancel(tx, id);
     const items = await tx.orderItem.findMany({
       where: { orderId: id, variantId: { not: null } },
     });

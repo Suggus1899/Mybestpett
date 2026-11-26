@@ -185,6 +185,20 @@ export interface Cart {
   canCheckout: boolean;
 }
 
+export type PointsReason = 'EARNED' | 'REDEEMED' | 'RESTORED' | 'REVERSED' | 'ADJUSTED';
+
+export interface PointsSummary extends Page<{
+  id: string;
+  delta: number;
+  reason: PointsReason;
+  note: string | null;
+  createdAt: string;
+  order: { id: string; number: number } | null;
+}> {
+  balance: number;
+  valueUsdCents: number;
+}
+
 export interface Combo {
   id: string;
   name: string;
@@ -300,6 +314,9 @@ export interface Order {
   comboDiscountUsdCents: number;
   couponDiscountUsdCents: number;
   couponCode: string | null;
+  pointsRedeemed: number;
+  pointsDiscountUsdCents: number;
+  pointsEarned: number;
   shippingUsdCents: number;
   totalUsdCents: number;
   totalCharged: string;
@@ -479,6 +496,7 @@ export const api = {
     return { error: typeof msg === 'string' ? msg.replace(/^[a-zA-Z.]+: /, '') : 'Ese cupón no aplica' };
   },
   combos: () => get<Combo[]>('/combos'),
+  points: (params: Params) => get<PointsSummary>(`/points${qs(params)}`, true),
   manageCombos: (params: Params) => get<Page<ComboRow>>(`/manage/combos${qs(params)}`, true),
   manageCoupons: (params: Params) => get<Page<Coupon>>(`/manage/coupons${qs(params)}`, true),
   addresses: () => get<Address[]>('/addresses', true),

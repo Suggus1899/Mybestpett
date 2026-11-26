@@ -188,9 +188,10 @@ describe('discountedShare', () => {
   const order = {
     subtotalUsdCents: 4000,
     comboDiscountUsdCents: 500,
-    couponDiscountUsdCents: 300,
+    couponDiscountUsdCents: 200,
+    pointsDiscountUsdCents: 100,
   };
-  it('reparte los descuentos en proporción', () => {
+  it('reparte combos, cupón y puntos en proporción', () => {
     // Se pagó 3200 de 4000: un producto de 1000 devuelve 800.
     expect(discountedShare(1000, order)).toBe(800);
   });
@@ -200,6 +201,7 @@ describe('discountedShare', () => {
         ...order,
         comboDiscountUsdCents: 0,
         couponDiscountUsdCents: 0,
+        pointsDiscountUsdCents: 0,
       }),
     ).toBe(1000);
   });

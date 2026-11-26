@@ -51,6 +51,12 @@ export function OrderItems({ order }: { order: Order }) {
             <dd className="text-right">−{formatUsd(order.couponDiscountUsdCents)}</dd>
           </>
         )}
+        {order.pointsDiscountUsdCents > 0 && (
+          <>
+            <dt>Puntos ({order.pointsRedeemed})</dt>
+            <dd className="text-right">−{formatUsd(order.pointsDiscountUsdCents)}</dd>
+          </>
+        )}
         <dt>Envío ({order.shippingZoneName})</dt>
         <dd className="text-right">{order.shippingUsdCents === 0 ? 'Gratis' : formatUsd(order.shippingUsdCents)}</dd>
         <dt className="font-extrabold">Total</dt>
@@ -60,6 +66,9 @@ export function OrderItems({ order }: { order: Order }) {
           {formatMoney(order.totalCharged, order.chargedCurrency)}
         </dd>
       </dl>
+      {order.pointsEarned > 0 && (
+        <p className="mt-2 font-bold text-petbf">Con este pedido ganaste {order.pointsEarned} puntos.</p>
+      )}
       {order.usdVesRate && order.chargedCurrency !== 'USD' && order.chargedCurrency !== 'USDT' && (
         <p className="mt-2 text-sm text-slate">
           Tasa BCV congelada en el pedido: Bs. {order.usdVesRate} por dólar

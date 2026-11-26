@@ -1,3 +1,4 @@
+import { redeemPointsSchema } from '../loyalty/loyalty.schemas.js';
 import { couponCodeSchema } from '../promotions/promotions.schemas.js';
 import { z } from 'zod';
 import { paginationShape } from '../common/pagination.js';
@@ -15,6 +16,7 @@ export const checkoutSchema = z.object({
   paymentMethodId: id,
   acceptTerms: z.literal(true, 'Debes aceptar los términos y condiciones'),
   couponCode: couponCodeSchema.optional(),
+  points: redeemPointsSchema.default(0),
 });
 
 // Referencia bancaria normalizada: sin espacios y en mayúsculas, para
