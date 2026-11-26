@@ -1,0 +1,43 @@
+@import "tailwindcss";
+
+/* Identidad visual de Petbf v1. Los nombres siguen la guía de marca. */
+@theme {
+  --color-petbf: #0e7566; /* primario: botones, enlaces, cabecera */
+  --color-petbf-dark: #0a5b4f; /* hover del primario */
+  --color-petbf-soft: #ddf0ec; /* fondos suaves y etiquetas */
+  --color-amber: #f4a340; /* solo ofertas, siempre con texto tinta */
+  --color-ink: #18292e; /* texto principal */
+  --color-slate: #4f6166; /* texto secundario */
+  --color-mist: #f2f6f5; /* fondo de página */
+  --color-line: #dce4e2; /* bordes */
+  --color-danger: #b3261e;
+
+  --font-display: var(--font-fredoka), ui-rounded, system-ui, sans-serif;
+  --font-sans: var(--font-nunito), system-ui, sans-serif;
+
+  --radius-card: 16px;
+  --radius-field: 12px;
+}
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  background: var(--color-mist);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  font-weight: 600;
+}
+
+/* Foco visible para quien navega con teclado. */
+:focus-visible {
+  outline: 3px solid var(--color-amber);
+  outline-offset: 2px;
+}
