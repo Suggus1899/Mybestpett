@@ -7,6 +7,7 @@ import 'package:petbf/core/petbf_api.dart';
 import 'package:petbf/core/token_store.dart';
 import 'package:petbf/models/catalog.dart';
 import 'package:petbf/models/json.dart';
+import 'package:petbf/models/points.dart';
 import 'package:petbf/models/reviews.dart';
 import 'package:petbf/models/shop.dart';
 import 'package:petbf/router.dart';
@@ -908,6 +909,157 @@ void main() {
       expect(withStock(5).maxToAdd, 5);
       expect(withStock(40).maxToAdd, 5);
       expect(withStock(3).description, '');
+    });
+  });
+
+  group('puntos', () {
+    Map<String, Object?> entry(Object? reason, {Object? order}) => {
+      'id': 'p1',
+      'delta': 25,
+      'reason': reason,
+      'note': null,
+      'createdAt': '2026-11-20T15:30:00.000Z',
+      'order': order,
+    };
+
+    test('lee el saldo y los movimientos con paginación', () async {
+      await api.login(email: 'ana@petbf.com', password: 'secreta123');
+      for (var i = 0; i < 3; i++) {
+        backend.addPoints('ana@petbf.com', 100 + i);
+      }
+      final summary = await api.points(page: 2, pageSize: 2);
+      expect(
+        backend.called('GET', '/points').last.url.query,
+        contains('page=2'),
+      );
+      expect(
+        backend.called('GET', '/points').last.url.query,
+        contains('pageSize=2'),
+      );
+      expect(summary.balance, 303);
+      expect(summary.total, 3);
+      expect(summary.items, hasLength(1));
+      expect(summary.asPage.hasMore, isFalse);
+    });
+
+    test('sin sesión la API responde 401', () async {
+      await expectLater(
+        api.points(),
+        throwsA(isA<ApiException>().having((e) => e.status, 'status', 401)),
+      );
+    });
+
+    test('checkout manda points solo si hay', () async {
+      await api.login(email: 'ana@petbf.com', password: 'secreta123');
+      backend.addAddress('ana@petbf.com');
+      backend.addPoints('ana@petbf.com', 1000);
+      backend.carts['ana@petbf.com'] = {'v-mord': 2};
+      final order = await api.checkout(
+        addressId: 'ad-1',
+        shippingZoneId: 'z-caracas',
+        paymentMethodId: 'm-pm',
+        points: 500,
+      );
+      expect(lastBody('POST', '/orders')['points'], 500);
+      expect(order.pointsRedeemed, 500);
+      expect(order.pointsDiscountUsdCents, 500);
+      expect(order.pointsEarned, 0);
+
+      backend.carts['ana@petbf.com'] = {'v-mord': 1};
+      await api.checkout(
+        addressId: 'ad-1',
+        shippingZoneId: 'z-caracas',
+        paymentMethodId: 'm-pm',
+      );
+      expect(lastBody('POST', '/orders').containsKey('points'), isFalse);
+    });
+
+    test('la API rechaza más puntos de los que hay', () async {
+      await api.login(email: 'ana@petbf.com', password: 'secreta123');
+      backend.addAddress('ana@petbf.com');
+      backend.carts['ana@petbf.com'] = {'v-mord': 2};
+      await expectLater(
+        api.checkout(
+          addressId: 'ad-1',
+          shippingZoneId: 'z-caracas',
+          paymentMethodId: 'm-pm',
+          points: 100,
+        ),
+        throwsA(
+          isA<ApiException>().having(
+            (e) => e.message,
+            'message',
+            'Tienes 0 puntos',
+          ),
+        ),
+      );
+    });
+
+    test('PointsEntry lee cada motivo y el pedido', () {
+      for (final r in PointsReason.values) {
+        final e = PointsEntry.fromJson(
+          entry(r.api, order: {'id': 'o-9', 'number': 123}),
+        );
+        expect(e.reason, r);
+        expect(e.orderId, 'o-9');
+        expect(e.orderCode, 'PB-000123');
+        expect(r.label, isNotEmpty);
+      }
+      final sin = PointsEntry.fromJson(entry('ADJUSTED'));
+      expect(sin.orderId, isNull);
+      expect(sin.orderCode, isNull);
+      expect(sin.note, isNull);
+    });
+
+    test('un motivo desconocido falla en vez de inventarse uno', () {
+      expect(
+        () => PointsEntry.fromJson(entry('REGALO')),
+        throwsA(isA<FormatException>()),
+      );
+    });
+
+    test('PointsSummary.empty es el estado sin sesión', () {
+      expect(PointsSummary.empty.balance, 0);
+      expect(PointsSummary.empty.items, isEmpty);
+    });
+
+    test('maxRedeemablePoints: saldo, total de productos y de 100 en 100', () {
+      int max(int balance, int items) =>
+          maxRedeemablePoints(balance: balance, itemsTotalUsdCents: items);
+      expect(max(1000, 1780), 1000);
+      expect(max(5000, 1780), 1700);
+      expect(max(99, 5000), 0);
+      expect(max(150, 5000), 100);
+      expect(max(1000, 0), 0);
+      expect(max(0, 1000), 0);
+      expect(max(-5, 1000), 0);
+      expect(max(1000, -5), 0);
+      expect(max(100, 100), 100);
+    });
+
+    test('pointsEarnedFor: un punto por dólar completo', () {
+      expect(pointsEarnedFor(0), 0);
+      expect(pointsEarnedFor(99), 0);
+      expect(pointsEarnedFor(100), 1);
+      expect(pointsEarnedFor(1780), 17);
+      expect(pointsEarnedFor(-100), 0);
+    });
+
+    test('Order.refundFor reparte también lo pagado con puntos', () async {
+      await api.login(email: 'ana@petbf.com', password: 'secreta123');
+      backend.addAddress('ana@petbf.com');
+      backend.addPoints('ana@petbf.com', 1000);
+      backend.carts['ana@petbf.com'] = {'v-mord': 2};
+      final order = await api.checkout(
+        addressId: 'ad-1',
+        shippingZoneId: 'z-caracas',
+        paymentMethodId: 'm-pm',
+        points: 500,
+      );
+      // Productos 1780; con 500 puntos se pagan 1280.
+      expect(order.refundFor(1780), 1280);
+      expect(order.refundFor(890), 640);
+      expect(order.refundFor(0), 0);
     });
   });
 

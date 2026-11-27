@@ -9,6 +9,11 @@
 // Los cupones y el combo de la prueba los crea contract/promotions.sql (la API
 // los crea solo desde el panel); sin ellos, esa prueba falla con un aviso.
 //
+// Los puntos se ganan al entregar un pedido (lo hace el equipo desde el panel).
+// Para probar canjearlos, la prueba se abona 500 con un ajuste directo en la
+// base si defines CONTRACT_DATABASE_URL (necesita psql); sin ella, prueba solo
+// lo que se puede sin saldo.
+//
 // Sin CONTRACT_API_URL se salta. Vive fuera de test/ para que no cargue
 // flutter_test_config.dart: el binding de widgets bloquea la red real.
 import 'dart:io';
@@ -22,10 +27,12 @@ import 'package:petbf/core/petbf_api.dart';
 import 'package:petbf/core/proof.dart';
 import 'package:petbf/core/token_store.dart';
 import 'package:petbf/models/catalog.dart';
+import 'package:petbf/models/points.dart';
 import 'package:petbf/models/reviews.dart';
 import 'package:petbf/models/shop.dart';
 
 final baseUrl = Platform.environment['CONTRACT_API_URL'];
+final databaseUrl = Platform.environment['CONTRACT_DATABASE_URL'];
 
 void main() {
   final skip = baseUrl == null ? 'Define CONTRACT_API_URL' : null;
@@ -476,6 +483,104 @@ void main() {
       await api.addCombo(combo.slug, 1);
       expect((await api.cart(coupon: 'CONTRATO-10')).coupon, isNotNull);
       await api.clearCart();
+    });
+
+    test('puntos: saldo, canje en el pedido y devolución al cancelar', () async {
+      final combo = (await api.combos()).firstWhere(
+        (c) => c.slug == 'combo-de-contrato',
+        orElse: () => fail('Falta el combo: corre contract/promotions.sql'),
+      );
+      final address = (await api.addresses()).first;
+      final zone = (await api.shippingZones()).firstWhere(
+        (z) => z.states.contains(address.state),
+      );
+      final method = (await api.paymentMethods()).firstWhere(
+        (m) => m.currency == Currency.ves,
+      );
+      Future<Order> checkout(int points) => api.checkout(
+        addressId: address.id,
+        shippingZoneId: zone.id,
+        paymentMethodId: method.id,
+        points: points,
+      );
+
+      // Una cuenta nueva no tiene puntos.
+      final empty = await api.points();
+      expect(empty.balance, 0);
+      expect(empty.items, isEmpty);
+      expect(empty.total, 0);
+      expect(empty.valueUsdCents, isNonNegative);
+
+      await api.addCombo(combo.slug, 1);
+      var e = await failure(checkout(100));
+      expect(e.status, 400);
+      expect(e.message, 'Tienes 0 puntos');
+      e = await failure(checkout(150));
+      expect(e.status, 400);
+      expect(e.message, 'Los puntos se canjean de 100 en 100');
+      await api.clearCart();
+
+      final db = databaseUrl;
+      if (db == null) {
+        markTestSkipped('Define CONTRACT_DATABASE_URL para probar el canje');
+        return;
+      }
+      final abono = await Process.run('psql', [
+        db,
+        '-v',
+        'ON_ERROR_STOP=1',
+        '-c',
+        'INSERT INTO points_entries (id, "userId", delta, reason, note) '
+            "SELECT gen_random_uuid(), id, 500, 'ADJUSTED'::\"PointsReason\", "
+            "'Prueba de contrato' FROM users WHERE email = lower('$email')",
+      ]);
+      expect(abono.exitCode, 0, reason: '${abono.stderr}');
+
+      final funded = await api.points();
+      expect(funded.balance, 500);
+      expect(funded.valueUsdCents, 500);
+      expect(funded.total, 1);
+      expect(funded.items.single.reason, PointsReason.adjusted);
+      expect(funded.items.single.delta, 500);
+      expect(funded.items.single.note, 'Prueba de contrato');
+      expect(funded.items.single.orderCode, isNull);
+
+      // El saldo es el tope, aunque el pedido pague más.
+      await api.addCombo(combo.slug, 1);
+      e = await failure(checkout(600));
+      expect(e.status, 400);
+      expect(e.message, 'Tienes 500 puntos');
+      expect(maxRedeemablePoints(balance: 500, itemsTotalUsdCents: 4500), 500);
+
+      final order = await checkout(300);
+      expect(order.pointsRedeemed, 300);
+      expect(order.pointsDiscountUsdCents, 300);
+      expect(order.pointsEarned, 0);
+      expect(order.subtotalUsdCents, 4950);
+      expect(order.comboDiscountUsdCents, 450);
+      // 45,00 $ - 3,00 $ en puntos = 42,00 $: envío gratis.
+      expect(order.shippingUsdCents, 0);
+      expect(order.totalUsdCents, 4200);
+      // El reembolso estimado también reparte lo pagado con puntos.
+      expect(order.refundFor(1450), 1450 * 4200 ~/ 4950);
+
+      final used = await api.points();
+      expect(used.balance, 200);
+      expect(used.items.first.reason, PointsReason.redeemed);
+      expect(used.items.first.delta, -300);
+      expect(used.items.first.orderId, order.id);
+      expect(used.items.first.orderCode, order.code);
+      final paged = await api.points(pageSize: 1);
+      expect(paged.items, hasLength(1));
+      expect(paged.total, 2);
+      expect((await api.order(order.id)).pointsRedeemed, 300);
+
+      // Cancelar devuelve los puntos.
+      await api.cancelOrder(order.id);
+      final back = await api.points();
+      expect(back.balance, 500);
+      expect(back.items.first.reason, PointsReason.restored);
+      expect(back.items.first.delta, 300);
     });
 
     test('cerrar sesión revoca el token de renovación', () async {

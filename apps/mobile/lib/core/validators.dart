@@ -2,6 +2,8 @@
 // para avisar antes de enviar; la API vuelve a validar todo igualmente.
 // Cada función devuelve el mensaje de error o null si el valor es válido.
 
+import '../models/points.dart';
+
 /// Las 24 entidades federales de Venezuela, como en la API.
 const veStates = [
   'Amazonas',
@@ -209,3 +211,25 @@ String? normalizeCouponCode(String text) {
   final code = text.trim().toUpperCase();
   return RegExp(r'^[A-Z0-9][A-Z0-9-]{2,29}$').hasMatch(code) ? code : null;
 }
+
+/// Puntos a usar en un pedido: vacío es 0; enteros, de 100 en 100 y sin pasar
+/// de [max] (el saldo o lo que se paga por los productos).
+String? validatePoints(String? value, {required int max}) {
+  final text = value?.trim() ?? '';
+  if (text.isEmpty) return null;
+  final points = int.tryParse(text);
+  if (points == null || points < 0 || !RegExp(r'^\d+$').hasMatch(text)) {
+    return 'Escribe solo números enteros';
+  }
+  if (points % pointsStep != 0) {
+    return 'Los puntos se canjean de $pointsStep en $pointsStep';
+  }
+  if (points > max) return 'En este pedido puedes usar hasta $max puntos';
+  return null;
+}
+
+/// Los puntos escritos, o 0 si el campo está vacío o no es válido.
+int pointsFrom(String? value, {required int max}) =>
+    validatePoints(value, max: max) == null
+    ? int.tryParse(value?.trim() ?? '') ?? 0
+    : 0;

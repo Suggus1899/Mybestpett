@@ -237,6 +237,8 @@ void main() {
       await scrollTo(tester, find.text('El producto se ve usado'));
       expect(find.text('Rechazada · Bs. 649,70'), findsOneWidget);
       // La rechazada no descuenta unidades.
+      await tester.drag(verticalScrollable, const Offset(0, 3000));
+      await tester.pumpAndSettle();
       await scrollTo(tester, find.text('Pedir devolución'));
       await tapText(app, 'Pedir devolución');
       expect(find.text('Talla M · puedes devolver 2'), findsOneWidget);

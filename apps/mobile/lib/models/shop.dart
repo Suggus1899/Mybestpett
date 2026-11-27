@@ -665,6 +665,9 @@ class Order {
     this.comboDiscountUsdCents = 0,
     this.couponDiscountUsdCents = 0,
     this.couponCode,
+    this.pointsRedeemed = 0,
+    this.pointsDiscountUsdCents = 0,
+    this.pointsEarned = 0,
     required this.recipientName,
     required this.phone,
     required this.state,
@@ -701,6 +704,9 @@ class Order {
       comboDiscountUsdCents: json.intOrNull('comboDiscountUsdCents') ?? 0,
       couponDiscountUsdCents: json.intOrNull('couponDiscountUsdCents') ?? 0,
       couponCode: json.strOrNull('couponCode'),
+      pointsRedeemed: json.intOrNull('pointsRedeemed') ?? 0,
+      pointsDiscountUsdCents: json.intOrNull('pointsDiscountUsdCents') ?? 0,
+      pointsEarned: json.intOrNull('pointsEarned') ?? 0,
       recipientName: json.str('recipientName'),
       phone: json.str('phone'),
       state: json.str('state'),
@@ -738,12 +744,21 @@ class Order {
   final int couponDiscountUsdCents;
   final String? couponCode;
 
+  /// Puntos usados en el pedido y lo que descontaron.
+  final int pointsRedeemed;
+  final int pointsDiscountUsdCents;
+
+  /// Puntos que ganó el pedido (se llena al entregarlo).
+  final int pointsEarned;
+
   /// Lo que se devuelve por unos productos de precio de lista [listUsdCents]:
-  /// con combos o cupón, lo pagado, repartido en proporción (como la API).
+  /// con combos, cupón o puntos, lo pagado, repartido en proporción (como la
+  /// API).
   int refundFor(int listUsdCents) => discountedShare(
     listUsdCents,
     subtotalUsdCents: subtotalUsdCents,
-    discountUsdCents: comboDiscountUsdCents + couponDiscountUsdCents,
+    discountUsdCents:
+        comboDiscountUsdCents + couponDiscountUsdCents + pointsDiscountUsdCents,
   );
   final String recipientName;
   final String phone;

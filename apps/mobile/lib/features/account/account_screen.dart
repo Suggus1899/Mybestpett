@@ -65,6 +65,17 @@ class AccountScreen extends ConsumerWidget {
             ),
             const Divider(),
             ListTile(
+              leading: const Icon(Icons.stars_outlined),
+              title: const Text('Mis puntos'),
+              subtitle: switch (ref.watch(pointsBalanceProvider)) {
+                AsyncData(:final value) => Text('${value.balance} puntos'),
+                _ => null,
+              },
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => context.push('/cuenta/puntos'),
+            ),
+            const Divider(),
+            ListTile(
               leading: const Icon(Icons.location_on_outlined),
               title: const Text('Mis direcciones'),
               trailing: const Icon(Icons.chevron_right),

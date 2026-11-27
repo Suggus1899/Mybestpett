@@ -9,6 +9,7 @@ import '../../core/providers.dart';
 import '../../core/theme.dart';
 import '../../core/validators.dart';
 import '../../models/catalog.dart';
+import '../../models/points.dart';
 import '../../models/shop.dart';
 import '../../widgets/common.dart';
 import '../account/address_form.dart';
@@ -128,9 +129,27 @@ class _CheckoutFormState extends ConsumerState<CheckoutForm> {
   /// El carrito con el cupón aplicado, si lo hay.
   Cart get _cart => _quoted ?? widget.cart;
 
+  // Puntos a usar (se escriben de 100 en 100).
+  final _points = TextEditingController();
+
+  int get _balance => ref.read(pointsBalanceProvider).value?.balance ?? 0;
+
+  /// Lo máximo que se puede usar ahora: depende del saldo y de lo que se
+  /// paga por los productos (que cambia con el cupón).
+  int get _maxPoints => maxRedeemablePoints(
+    balance: _balance,
+    itemsTotalUsdCents: _cart.itemsTotalUsdCents,
+  );
+
+  String? get _pointsError => validatePoints(_points.text, max: _maxPoints);
+
+  /// Los puntos que se van a usar; 0 si el campo no es válido.
+  int get _pointsToUse => pointsFrom(_points.text, max: _maxPoints);
+
   @override
   void dispose() {
     _coupon.dispose();
+    _points.dispose();
     super.dispose();
   }
 
@@ -208,7 +227,13 @@ class _CheckoutFormState extends ConsumerState<CheckoutForm> {
       _error = null;
       _termsError = !_terms;
     });
-    if (zone == null || method == null || !_terms || _sending) return;
+    if (zone == null ||
+        method == null ||
+        !_terms ||
+        _sending ||
+        _pointsError != null) {
+      return;
+    }
     setState(() => _sending = true);
     try {
       final order = await ref
@@ -218,6 +243,7 @@ class _CheckoutFormState extends ConsumerState<CheckoutForm> {
             shippingZoneId: zone.id,
             paymentMethodId: method.id,
             couponCode: _cart.coupon?.code,
+            points: _pointsToUse,
           );
       ref.read(cartProvider.notifier).markEmpty();
       ref.invalidate(ordersProvider);
@@ -230,6 +256,8 @@ class _CheckoutFormState extends ConsumerState<CheckoutForm> {
         // se vea el total real y se pueda reintentar sin él.
         if (e.status == 400 && _quoted != null) _quoted = null;
       });
+      // El saldo pudo cambiar (otro pedido, un reembolso): se vuelve a leer.
+      if (e.status == 400) ref.invalidate(pointsBalanceProvider);
       // Stock o precios cambiaron: se recarga el carrito para mostrar lo real.
       if (e.status == 409 || e.status == 400) ref.invalidate(cartProvider);
     } finally {
@@ -244,8 +272,13 @@ class _CheckoutFormState extends ConsumerState<CheckoutForm> {
     final zone = _zone;
     final method = _method;
     final cart = _cart;
-    // El envío gratis se mide con lo que se paga por los productos.
-    final items = cart.itemsTotalUsdCents;
+    final balance = ref.watch(pointsBalanceProvider).value?.balance ?? 0;
+    final maxPoints = _maxPoints;
+    final pointsError = maxPoints > 0 ? _pointsError : null;
+    final points = maxPoints > 0 ? _pointsToUse : 0;
+    // Lo que se paga por los productos: con combos, cupón y puntos. El envío
+    // gratis se mide con este monto.
+    final items = cart.itemsTotalUsdCents - points * pointValueCents;
     final shipping = zone?.costFor(items) ?? 0;
     final total = items + shipping;
     final estimate = method == null ? null : _estimate(method, total);
@@ -417,6 +450,40 @@ class _CheckoutFormState extends ConsumerState<CheckoutForm> {
           'Un cupón por pedido. Se aplica sobre los productos, no sobre el envío.',
           style: TextStyle(fontSize: 13, color: PetbfColors.slate),
         ),
+        if (maxPoints > 0) ...[
+          const SizedBox(height: 16),
+          Text('Usar mis puntos', style: text.titleMedium),
+          const SizedBox(height: 8),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _points,
+                  keyboardType: TextInputType.number,
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    labelText: 'Puntos a usar',
+                    helperText:
+                        'Tienes $balance puntos. En este pedido puedes usar '
+                        'hasta $maxPoints (100 puntos = 1 \$).',
+                    helperMaxLines: 3,
+                    errorText: pointsError,
+                    errorMaxLines: 2,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: OutlinedButton(
+                  onPressed: () => setState(() => _points.text = '$maxPoints'),
+                  child: const Text('Usar el máximo'),
+                ),
+              ),
+            ],
+          ),
+        ],
         const SizedBox(height: 16),
         Panel(
           color: PetbfColors.mist,
@@ -434,8 +501,14 @@ class _CheckoutFormState extends ConsumerState<CheckoutForm> {
                   '−${formatUsd(coupon.discountUsdCents)}',
                   accent: true,
                 ),
-              if (cart.hasDiscounts)
-                _Row('Productos', formatUsd(cart.itemsTotalUsdCents)),
+              if (points > 0)
+                _Row(
+                  'Puntos ($points)',
+                  '−${formatUsd(points * pointValueCents)}',
+                  accent: true,
+                ),
+              if (cart.hasDiscounts || points > 0)
+                _Row('Productos', formatUsd(items)),
               _Row(
                 'Envío',
                 zone == null
@@ -452,6 +525,17 @@ class _CheckoutFormState extends ConsumerState<CheckoutForm> {
                       ? 'Sin tasa'
                       : formatMoneyCents(estimate, method.currency),
                   bold: true,
+                ),
+              ],
+              if (pointsEarnedFor(items) > 0) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Ganarás ${pointsEarnedFor(items)} puntos al recibir tu pedido.',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: PetbfColors.petbf,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ],
               const SizedBox(height: 6),
@@ -486,7 +570,11 @@ class _CheckoutFormState extends ConsumerState<CheckoutForm> {
         const SizedBox(height: 12),
         FilledButton(
           onPressed:
-              _sending || zone == null || method == null || estimate == null
+              _sending ||
+                  zone == null ||
+                  method == null ||
+                  estimate == null ||
+                  pointsError != null
               ? null
               : _submit,
           child: Text(_sending ? 'Creando pedido…' : 'Confirmar pedido'),

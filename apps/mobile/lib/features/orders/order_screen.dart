@@ -319,6 +319,11 @@ class _OrderViewState extends ConsumerState<OrderView> {
             'Cupón ${o.couponCode ?? ''}'.trim(),
             '−${formatUsd(o.couponDiscountUsdCents)}',
           ),
+        if (o.pointsDiscountUsdCents > 0)
+          _Line(
+            'Puntos (${o.pointsRedeemed})',
+            '−${formatUsd(o.pointsDiscountUsdCents)}',
+          ),
         _Line(
           'Envío (${o.shippingZoneName})',
           o.shippingUsdCents == 0 ? 'Gratis' : formatUsd(o.shippingUsdCents),
@@ -329,6 +334,17 @@ class _OrderViewState extends ConsumerState<OrderView> {
           formatMoney(o.totalCharged, o.chargedCurrency),
           bold: true,
         ),
+        if (o.pointsEarned > 0)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              'Con este pedido ganaste ${o.pointsEarned} puntos.',
+              style: const TextStyle(
+                color: PetbfColors.petbf,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
         if (o.usdVesRate != null)
           Text(
             'Tasa BCV del pedido: Bs. ${formatCents(decimalToCents(o.usdVesRate!))} por dólar',

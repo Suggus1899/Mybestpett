@@ -6,6 +6,7 @@ import 'core/providers.dart';
 import 'features/account/account_screen.dart';
 import 'features/account/addresses_screen.dart';
 import 'features/account/auth_screens.dart';
+import 'features/account/points_screen.dart';
 import 'features/animals/animal_screen.dart';
 import 'features/animals/animals_screen.dart';
 import 'features/cart/cart_screen.dart';
@@ -19,7 +20,12 @@ import 'features/orders/orders_screen.dart';
 import 'widgets/shell.dart';
 
 /// Rutas que exigen cuenta: sin sesión se va a entrar y se vuelve después.
-const protectedPrefixes = ['/checkout', '/pedidos', '/cuenta/direcciones'];
+const protectedPrefixes = [
+  '/checkout',
+  '/pedidos',
+  '/cuenta/direcciones',
+  '/cuenta/puntos',
+];
 
 /// Solo se aceptan rutas internas en `next` (evita redirecciones raras).
 String safeNext(String? value, {String fallback = '/cuenta'}) {
@@ -166,6 +172,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         parentNavigatorKey: _rootKey,
         path: '/cuenta/direcciones',
         builder: (_, _) => const AddressesScreen(),
+      ),
+      GoRoute(
+        parentNavigatorKey: _rootKey,
+        path: '/cuenta/puntos',
+        builder: (_, _) => const PointsScreen(),
       ),
     ],
     errorBuilder: (context, state) => Scaffold(

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/catalog.dart';
 import '../models/reviews.dart';
 import '../models/json.dart';
+import '../models/points.dart';
 import '../models/shop.dart';
 import 'api_client.dart';
 import 'petbf_api.dart';
@@ -347,6 +348,36 @@ class OrdersNotifier extends PagedNotifier<OrderSummary> {
 final ordersProvider =
     NotifierProvider.autoDispose<OrdersNotifier, PagedState<OrderSummary>>(
       OrdersNotifier.new,
+    );
+
+// ---------- Puntos (con sesión) ----------
+
+/// Saldo de puntos; vacío sin sesión. Pide solo un movimiento: el saldo viene
+/// aparte de la lista.
+final pointsBalanceProvider = FutureProvider.autoDispose<PointsSummary>((
+  ref,
+) async {
+  final userId = ref.watch(sessionProvider.select((s) => s.value?.id));
+  if (userId == null) return PointsSummary.empty;
+  return ref.read(apiProvider).points(pageSize: 1);
+});
+
+/// Movimientos de puntos, del más reciente al más antiguo.
+class PointsNotifier extends PagedNotifier<PointsEntry> {
+  @override
+  PagedState<PointsEntry> build() {
+    ref.watch(sessionProvider.select((s) => s.value?.id));
+    return super.build();
+  }
+
+  @override
+  Future<Page<PointsEntry>> fetch(int page) async =>
+      (await ref.read(apiProvider).points(page: page)).asPage;
+}
+
+final pointsProvider =
+    NotifierProvider.autoDispose<PointsNotifier, PagedState<PointsEntry>>(
+      PointsNotifier.new,
     );
 
 // ---------- Compra (con sesión) ----------
