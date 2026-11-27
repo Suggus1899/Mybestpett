@@ -228,8 +228,23 @@ class PetbfApi {
 
   // ---------- Carrito ----------
 
-  Future<Cart> cart() async =>
-      Cart.fromJson(asJson(await client.get('/cart', auth: true)));
+  /// Con [coupon], la API prueba el cupón: 400 con el motivo si no aplica.
+  Future<Cart> cart({String? coupon}) async => Cart.fromJson(
+    asJson(await client.get('/cart', auth: true, query: {'coupon': coupon})),
+  );
+
+  /// Añade todas las unidades del combo, o ninguna si alguna no alcanza.
+  Future<Cart> addCombo(String slug, int quantity) async => Cart.fromJson(
+    asJson(
+      await client.post(
+        '/cart/combos/${Uri.encodeComponent(slug)}',
+        body: {'quantity': quantity},
+      ),
+    ),
+  );
+
+  Future<List<Combo>> combos() async =>
+      asList(await client.get('/combos'), Combo.fromJson);
 
   Future<Cart> addToCart(String variantId, int quantity) async => Cart.fromJson(
     asJson(
@@ -293,6 +308,7 @@ class PetbfApi {
     required String addressId,
     required String shippingZoneId,
     required String paymentMethodId,
+    String? couponCode,
   }) async => Order.fromJson(
     asJson(
       await client.post(
@@ -302,6 +318,7 @@ class PetbfApi {
           'shippingZoneId': shippingZoneId,
           'paymentMethodId': paymentMethodId,
           'acceptTerms': true,
+          'couponCode': ?couponCode,
         },
       ),
     ),

@@ -135,10 +135,13 @@ class _ReturnRequestFormState extends ConsumerState<ReturnRequestForm> {
   @override
   Widget build(BuildContext context) {
     final lines = widget.order.returnableLeft;
-    final refund = [
-      for (final l in lines)
-        l.item.unitPriceUsdCents * (_quantities[l.item.id] ?? 0),
-    ].fold(0, (a, b) => a + b);
+    // Con combos o cupón se devuelve lo pagado, no el precio de lista.
+    final refund = widget.order.refundFor(
+      [
+        for (final l in lines)
+          l.item.unitPriceUsdCents * (_quantities[l.item.id] ?? 0),
+      ].fold(0, (a, b) => a + b),
+    );
     return Form(
       key: _form,
       child: Column(

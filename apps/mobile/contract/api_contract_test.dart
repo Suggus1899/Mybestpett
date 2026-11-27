@@ -6,6 +6,9 @@
 //
 //   CONTRACT_API_URL=http://localhost:3001/v1 flutter test contract
 //
+// Los cupones y el combo de la prueba los crea contract/promotions.sql (la API
+// los crea solo desde el panel); sin ellos, esa prueba falla con un aviso.
+//
 // Sin CONTRACT_API_URL se salta. Vive fuera de test/ para que no cargue
 // flutter_test_config.dart: el binding de widgets bloquea la red real.
 import 'dart:io';
@@ -370,6 +373,109 @@ void main() {
         api.order('00000000-0000-0000-0000-000000000000'),
       );
       expect(other.isNotFound, isTrue);
+    });
+
+    test('combos y cupones: carrito, pedido y cancelación', () async {
+      final combo = (await api.combos()).firstWhere(
+        (c) => c.slug == 'combo-de-contrato',
+        orElse: () => fail('Falta el combo: corre contract/promotions.sql'),
+      );
+      expect(combo.priceUsdCents, 4500);
+      expect(combo.regularUsdCents, 4950);
+      expect(combo.savingsUsdCents, 450);
+      expect(combo.items, hasLength(2));
+      expect(combo.items.every((i) => i.quantity == 1), isTrue);
+      expect(combo.available, greaterThan(0));
+      expect(combo.maxToAdd, inInclusiveRange(1, 5));
+      final missing = await failure(api.addCombo('no-existe-$stamp', 1));
+      expect(missing.isNotFound, isTrue);
+      expect(missing.message, 'Combo no encontrado');
+
+      // Un cupón que no aplica da el motivo exacto (sin el campo delante).
+      final cart = await api.addCombo(combo.slug, 1);
+      expect(cart.combos.single.count, 1);
+      expect(cart.combos.single.savingsUsdCents, 450);
+      expect(cart.comboDiscountUsdCents, 450);
+      expect(cart.subtotalUsdCents, 4950);
+      expect(cart.itemsTotalUsdCents, 4500);
+      expect(cart.coupon, isNull);
+      expect(cart.canCheckout, isTrue);
+      Future<void> rejects(String code, int status, Object message) async {
+        final e = await failure(api.cart(coupon: code));
+        expect(e.status, status, reason: code);
+        expect(e.message, message, reason: code);
+      }
+
+      await rejects(
+        'NO-EXISTE-X',
+        400,
+        'Ese cupón no existe o ya no está activo',
+      );
+      await rejects('CONTRATO-VENCIDO', 400, 'Ese cupón ya venció');
+      await rejects(
+        'CONTRATO-MIN',
+        400,
+        startsWith('Ese cupón aplica en compras desde'),
+      );
+      await rejects('AB', 400, isNot(startsWith('coupon')));
+
+      // Cupones válidos: porcentaje, con tope y de monto fijo (nunca pasa de
+      // lo que se paga por los productos).
+      final tenPercent = await api.cart(coupon: ' contrato-10 ');
+      expect(tenPercent.coupon!.code, 'CONTRATO-10');
+      expect(tenPercent.coupon!.discountUsdCents, 450); // 10 % de 45,00
+      expect(tenPercent.itemsTotalUsdCents, 4050);
+      final capped = await api.cart(coupon: 'CONTRATO-TOPE');
+      expect(capped.coupon!.discountUsdCents, 500);
+      final fixed = await api.cart(coupon: 'CONTRATO-FIJO');
+      expect(fixed.coupon!.discountUsdCents, 4500);
+      expect(fixed.itemsTotalUsdCents, 0);
+
+      final address = (await api.addresses()).first;
+      final zone = (await api.shippingZones()).firstWhere(
+        (z) => z.states.contains(address.state),
+      );
+      final method = (await api.paymentMethods()).firstWhere(
+        (m) => m.currency == Currency.ves,
+      );
+      final rates = await api.rates();
+      final order = await api.checkout(
+        addressId: address.id,
+        shippingZoneId: zone.id,
+        paymentMethodId: method.id,
+        couponCode: 'CONTRATO-10',
+      );
+      expect(order.subtotalUsdCents, 4950);
+      expect(order.comboDiscountUsdCents, 450);
+      expect(order.couponDiscountUsdCents, 450);
+      expect(order.couponCode, 'CONTRATO-10');
+      // Con 40,50 $ por los productos el envío es gratis (se mide con lo pagado).
+      expect(order.shippingUsdCents, 0);
+      expect(order.totalUsdCents, 4050);
+      // La app estima el reembolso como la API lo calcula.
+      expect(order.refundFor(1450), 1450 * 4050 ~/ 4950);
+      expect(
+        decimalToCents(order.totalCharged),
+        chargeCents(
+          order.totalUsdCents,
+          Currency.ves,
+          usdVes: order.usdVesRate,
+          eurVes: rates.eurVes,
+        ),
+      );
+      expect((await api.order(order.id)).couponCode, 'CONTRATO-10');
+      expect((await api.cart()).items, isEmpty);
+
+      // Un cupón de un uso por cliente: ya no se puede repetir…
+      await api.addCombo(combo.slug, 1);
+      await rejects('CONTRATO-10', 400, 'Ya usaste este cupón');
+      // …hasta que se cancela el pedido, que libera el uso.
+      await api.clearCart();
+      final cancelled = await api.cancelOrder(order.id);
+      expect(cancelled.status, OrderStatus.cancelled);
+      await api.addCombo(combo.slug, 1);
+      expect((await api.cart(coupon: 'CONTRATO-10')).coupon, isNotNull);
+      await api.clearCart();
     });
 
     test('cerrar sesión revoca el token de renovación', () async {

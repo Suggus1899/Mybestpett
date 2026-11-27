@@ -83,18 +83,71 @@ class CartItem {
   final int available;
 }
 
+/// Un combo completo que el carrito descuenta ([count] veces).
+class AppliedCombo {
+  const AppliedCombo({
+    required this.comboId,
+    required this.name,
+    required this.count,
+    required this.savingsUsdCents,
+  });
+  factory AppliedCombo.fromJson(Json json) => AppliedCombo(
+    comboId: json.str('comboId'),
+    name: json.str('name'),
+    count: json.integer('count'),
+    savingsUsdCents: json.integer('savingsUsdCents'),
+  );
+  final String comboId;
+  final String name;
+  final int count;
+  final int savingsUsdCents;
+
+  /// "Combo Baño completo × 2"
+  String get label => count > 1 ? 'Combo $name × $count' : 'Combo $name';
+}
+
+/// Cupón que la API aceptó para este carrito.
+class CartCoupon {
+  const CartCoupon({
+    required this.code,
+    required this.description,
+    required this.discountUsdCents,
+  });
+  factory CartCoupon.fromJson(Json json) => CartCoupon(
+    code: json.str('code'),
+    description: json.str('description'),
+    discountUsdCents: json.integer('discountUsdCents'),
+  );
+  final String code;
+  final String description;
+  final int discountUsdCents;
+}
+
 class Cart {
   const Cart({
     required this.items,
     required this.itemCount,
     required this.subtotalUsdCents,
     required this.canCheckout,
-  });
+    this.combos = const [],
+    this.comboDiscountUsdCents = 0,
+    this.coupon,
+    int? itemsTotalUsdCents,
+  }) : itemsTotalUsdCents = itemsTotalUsdCents ?? subtotalUsdCents;
+
+  /// Una API anterior a los combos no manda los descuentos: se toman en 0.
   factory Cart.fromJson(Json json) => Cart(
     items: asList(json['items'], CartItem.fromJson),
     itemCount: json.integer('itemCount'),
     subtotalUsdCents: json.integer('subtotalUsdCents'),
     canCheckout: json.boolean('canCheckout'),
+    combos: asList(json['combos'] ?? const [], AppliedCombo.fromJson),
+    comboDiscountUsdCents: json.intOrNull('comboDiscountUsdCents') ?? 0,
+    coupon: switch (json.objOrNull('coupon')) {
+      final Json c => CartCoupon.fromJson(c),
+      null => null,
+    },
+    itemsTotalUsdCents: json.intOrNull('itemsTotalUsdCents'),
   );
   static const empty = Cart(
     items: [],
@@ -104,8 +157,93 @@ class Cart {
   );
   final List<CartItem> items;
   final int itemCount;
+
+  /// Precio de lista de los productos, sin descuentos.
   final int subtotalUsdCents;
   final bool canCheckout;
+  final List<AppliedCombo> combos;
+  final int comboDiscountUsdCents;
+  final CartCoupon? coupon;
+
+  /// Lo que se paga por los productos (con combos y cupón). El envío gratis
+  /// se mide con este monto.
+  final int itemsTotalUsdCents;
+
+  bool get hasDiscounts => comboDiscountUsdCents > 0 || coupon != null;
+}
+
+/// Un producto de un combo.
+class ComboItem {
+  const ComboItem({
+    required this.quantity,
+    required this.variantId,
+    required this.variantName,
+    required this.unitPriceUsdCents,
+    required this.productName,
+    required this.productSlug,
+    required this.image,
+  });
+  factory ComboItem.fromJson(Json json) {
+    final product = json.obj('product');
+    return ComboItem(
+      quantity: json.integer('quantity'),
+      variantId: json.str('variantId'),
+      variantName: json.str('variantName'),
+      unitPriceUsdCents: json.integer('unitPriceUsdCents'),
+      productName: product.str('name'),
+      productSlug: product.str('slug'),
+      image: product.objOrNull('image') == null
+          ? null
+          : ImageRef.fromJson(product.obj('image')),
+    );
+  }
+  final int quantity;
+  final String variantId;
+  final String variantName;
+  final int unitPriceUsdCents;
+  final String productName;
+  final String productSlug;
+  final ImageRef? image;
+}
+
+/// Varios productos a un precio menor que por separado.
+class Combo {
+  const Combo({
+    required this.id,
+    required this.name,
+    required this.slug,
+    required this.description,
+    required this.priceUsdCents,
+    required this.regularUsdCents,
+    required this.savingsUsdCents,
+    required this.available,
+    required this.items,
+  });
+  factory Combo.fromJson(Json json) => Combo(
+    id: json.str('id'),
+    name: json.str('name'),
+    slug: json.str('slug'),
+    description: json.strOrNull('description') ?? '',
+    priceUsdCents: json.integer('priceUsdCents'),
+    regularUsdCents: json.integer('regularUsdCents'),
+    savingsUsdCents: json.integer('savingsUsdCents'),
+    available: json.integer('available'),
+    items: asList(json['items'], ComboItem.fromJson),
+  );
+  final String id;
+  final String name;
+  final String slug;
+  final String description;
+  final int priceUsdCents;
+  final int regularUsdCents;
+  final int savingsUsdCents;
+
+  /// Cuántos combos completos alcanzan con el stock de hoy.
+  final int available;
+  final List<ComboItem> items;
+
+  /// Cuántos se pueden añadir de una vez (la API acepta de 1 a 5).
+  int get maxToAdd => available < 5 ? available : 5;
 }
 
 class Address {
@@ -524,6 +662,9 @@ class Order {
     required this.shippingUsdCents,
     required this.totalUsdCents,
     required this.totalCharged,
+    this.comboDiscountUsdCents = 0,
+    this.couponDiscountUsdCents = 0,
+    this.couponCode,
     required this.recipientName,
     required this.phone,
     required this.state,
@@ -557,6 +698,9 @@ class Order {
       shippingUsdCents: json.integer('shippingUsdCents'),
       totalUsdCents: json.integer('totalUsdCents'),
       totalCharged: json.decimal('totalCharged'),
+      comboDiscountUsdCents: json.intOrNull('comboDiscountUsdCents') ?? 0,
+      couponDiscountUsdCents: json.intOrNull('couponDiscountUsdCents') ?? 0,
+      couponCode: json.strOrNull('couponCode'),
       recipientName: json.str('recipientName'),
       phone: json.str('phone'),
       state: json.str('state'),
@@ -590,6 +734,17 @@ class Order {
 
   /// Monto exacto a pagar en [chargedCurrency], congelado al crear el pedido.
   final String totalCharged;
+  final int comboDiscountUsdCents;
+  final int couponDiscountUsdCents;
+  final String? couponCode;
+
+  /// Lo que se devuelve por unos productos de precio de lista [listUsdCents]:
+  /// con combos o cupón, lo pagado, repartido en proporción (como la API).
+  int refundFor(int listUsdCents) => discountedShare(
+    listUsdCents,
+    subtotalUsdCents: subtotalUsdCents,
+    discountUsdCents: comboDiscountUsdCents + couponDiscountUsdCents,
+  );
   final String recipientName;
   final String phone;
   final String state;

@@ -312,6 +312,13 @@ class _OrderViewState extends ConsumerState<OrderView> {
           ),
         const Divider(height: 24),
         _Line('Subtotal', formatUsd(o.subtotalUsdCents)),
+        if (o.comboDiscountUsdCents > 0)
+          _Line('Combos', '−${formatUsd(o.comboDiscountUsdCents)}'),
+        if (o.couponDiscountUsdCents > 0)
+          _Line(
+            'Cupón ${o.couponCode ?? ''}'.trim(),
+            '−${formatUsd(o.couponDiscountUsdCents)}',
+          ),
         _Line(
           'Envío (${o.shippingZoneName})',
           o.shippingUsdCents == 0 ? 'Gratis' : formatUsd(o.shippingUsdCents),

@@ -107,3 +107,17 @@ int shippingCostCents(
   }
   return priceUsdCents;
 }
+
+/// Parte pagada de [listUsdCents] cuando el pedido tuvo [discountUsdCents] de
+/// descuento sobre [subtotalUsdCents]; redondea hacia abajo, igual que la API.
+int discountedShare(
+  int listUsdCents, {
+  required int subtotalUsdCents,
+  required int discountUsdCents,
+}) {
+  if (discountUsdCents == 0 || subtotalUsdCents == 0) return listUsdCents;
+  return (BigInt.from(listUsdCents) *
+          BigInt.from(subtotalUsdCents - discountUsdCents) ~/
+          BigInt.from(subtotalUsdCents))
+      .toInt();
+}

@@ -103,6 +103,13 @@ jobs:
         working-directory: .
         env:
           SEED_DEMO: "true"
+          # Solo para firmar los cupones de la prueba: la prueba no inicia su sesión.
+          SEED_ADMIN_EMAIL: contrato-admin@petbf.test
+          SEED_ADMIN_PASSWORD: clave-de-admin-contrato
+      # Cupones y combo de la prueba (la API los crea solo desde el panel).
+      - run: psql -h localhost -U petbf -d petbf_contract -v ON_ERROR_STOP=1 -f contract/promotions.sql
+        env:
+          PGPASSWORD: petbf
       - run: pnpm --filter api build
         working-directory: .
       - name: Arrancar la API

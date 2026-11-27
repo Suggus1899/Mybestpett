@@ -194,3 +194,18 @@ String? validateReviewBody(String? value) {
   if (text.length > 1000) return 'La reseña admite hasta 1000 caracteres';
   return null;
 }
+
+/// Cupón: de 3 a 30 letras, números o guiones; se envía en mayúsculas.
+String? validateCouponCode(String? value) {
+  final code = value?.trim() ?? '';
+  if (code.isEmpty) return 'Escribe el código del cupón';
+  return normalizeCouponCode(code) == null
+      ? 'El cupón tiene de 3 a 30 letras, números o guiones'
+      : null;
+}
+
+/// El código como lo guarda la API ("verano-10 " → "VERANO-10"), o null.
+String? normalizeCouponCode(String text) {
+  final code = text.trim().toUpperCase();
+  return RegExp(r'^[A-Z0-9][A-Z0-9-]{2,29}$').hasMatch(code) ? code : null;
+}
