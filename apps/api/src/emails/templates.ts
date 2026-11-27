@@ -60,6 +60,29 @@ export const templates = {
       'Si no reportas el pago a tiempo, el pedido se cancela y liberamos los productos.',
     ),
   }),
+  subscriptionOrder: (
+    o: OrderInfo,
+    productName: string,
+    dueAt: Date,
+    instructions: string,
+  ): Email => ({
+    subject: `Tu entrega recurrente de ${productName}: pedido ${o.code}`,
+    text: body(
+      o,
+      `Tu suscripción generó el pedido ${o.code} (${productName}). Para confirmarlo, paga ${o.total} con ${o.methodName} y reporta el pago desde la tienda antes del ${when(dueAt)}.`,
+      `Datos para pagar:\n${instructions}`,
+      'Si no lo pagas a tiempo, este pedido se cancela y la suscripción sigue con la próxima entrega. Puedes pausarla o cancelarla desde Mis suscripciones.',
+    ),
+  }),
+  subscriptionPaused: (
+    firstName: string,
+    productName: string,
+    reason: string,
+    url: string,
+  ): Email => ({
+    subject: `Pausamos tu suscripción de ${productName}`,
+    text: `Hola, ${firstName}:\n\nNo pudimos crear tus últimos pedidos de ${productName} y pausamos la suscripción. Motivo: ${reason}\n\nCuando lo resuelvas, reanúdala desde Mis suscripciones: ${url}${sign}`,
+  }),
   paymentVerified: (o: OrderInfo): Email => ({
     subject: `Pedido ${o.code}: pago confirmado`,
     text: body(

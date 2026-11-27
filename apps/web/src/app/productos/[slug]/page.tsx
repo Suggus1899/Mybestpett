@@ -85,6 +85,15 @@ async function Product({ params }: { params: Promise<{ slug: string }> }) {
                       compareAtUsdCents={variant.compareAtUsdCents}
                       rate={rate}
                     />
+                    {variant.inStock && product.subscribable && (
+                      <Link
+                        href={`/cuenta/suscripciones/nueva?producto=${product.slug}&presentacion=${variant.id}`}
+                        className="text-sm font-bold text-petbf hover:underline"
+                        aria-label={`Recibir ${product.name} ${variant.name} cada cierto tiempo`}
+                      >
+                        Recibirlo cada cierto tiempo
+                      </Link>
+                    )}
                     {variant.inStock && (
                       <AddToCartForm
                         variantId={variant.id}

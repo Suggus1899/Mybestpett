@@ -11,7 +11,7 @@ import { AddressesService } from '../addresses/addresses.service.js';
 import { AuditService } from '../audit/audit.service.js';
 import { EmailService } from '../emails/email.service.js';
 import type { AuthUser } from '../auth/auth.types.js';
-import { CartService, lineIssue } from '../cart/cart.service.js';
+import { CartService, lineIssue, type CartLine } from '../cart/cart.service.js';
 import { paged, paginate } from '../common/pagination.js';
 import type { OrderStatus } from '../generated/prisma/enums.js';
 import { Prisma } from '../generated/prisma/client.js';
@@ -37,6 +37,11 @@ import {
 } from './pricing.js';
 
 type Tx = Prisma.TransactionClient;
+type OrderRates = Awaited<ReturnType<RatesService['forOrder']>>;
+export type PlaceOrderInput = Pick<
+  CheckoutDto,
+  'addressId' | 'shippingZoneId' | 'paymentMethodId' | 'couponCode'
+> & { points: number };
 
 // Lo que ve el cliente de su pedido. Sin datos internos del equipo.
 const customerInclude = {
@@ -173,171 +178,187 @@ export class OrdersService implements OnModuleInit, OnModuleDestroy {
     const order = await this.prisma.$transaction(async (tx) => {
       // Bloquea a la persona: dos envíos seguidos del checkout no duplican el pedido.
       await tx.$executeRaw`SELECT 1 FROM users WHERE id = ${user.id}::uuid FOR UPDATE`;
-
       const rows = await this.cart.rows(tx, user.id);
       if (rows.length === 0)
         throw new BadRequestException('El carrito está vacío');
-      const blocked = rows.filter((r) => lineIssue(r) !== null);
-      if (blocked.length > 0) {
-        throw new ConflictException(
-          `Revisa tu carrito: ${blocked.map((r) => r.variant.product.name).join(', ')} ya no tiene stock suficiente`,
-        );
-      }
-
-      const address = await this.addresses.findOwn(tx, user.id, dto.addressId);
-      const zone = await tx.shippingZone.findFirst({
-        where: { id: dto.shippingZoneId, isActive: true },
-      });
-      if (!zone) throw new BadRequestException('Zona de envío no disponible');
-      if (!zone.states.includes(address.state)) {
-        throw new BadRequestException(
-          `La zona «${zone.name}» no llega a ${address.state}`,
-        );
-      }
-      const method = await tx.paymentMethod.findFirst({
-        where: { id: dto.paymentMethodId, isActive: true },
-      });
-      if (!method)
-        throw new BadRequestException('Método de pago no disponible');
-
-      const quote = await this.promotions.quote(
-        tx,
-        user.id,
-        rows.map((r) => ({
-          variantId: r.variantId,
-          quantity: r.quantity,
-          unitPriceUsdCents: r.variant.priceUsdCents,
-        })),
-        dto.couponCode,
-        { lock: true },
-      );
-      const subtotal = quote.subtotalUsdCents;
-      // Puntos: después de combos y cupón, solo sobre los productos.
-      const pointsDiscount = dto.points * POINT_VALUE_CENTS;
-      if (dto.points > 0) {
-        const balance = await this.loyalty.balance(tx, user.id);
-        if (dto.points > balance) {
-          throw new BadRequestException(`Tienes ${balance} puntos`);
-        }
-        if (pointsDiscount > quote.itemsTotalUsdCents) {
-          const max =
-            Math.floor(
-              quote.itemsTotalUsdCents / POINT_VALUE_CENTS / REDEEM_STEP,
-            ) * REDEEM_STEP;
-          throw new BadRequestException(
-            `En este pedido puedes usar como máximo ${max} puntos`,
-          );
-        }
-      }
-      const itemsTotal = quote.itemsTotalUsdCents - pointsDiscount;
-      // El envío gratis se mide con lo que se paga por los productos.
-      const shipping = shippingCost(itemsTotal, zone);
-      const total = itemsTotal + shipping;
-      let totalCharged: Prisma.Decimal;
-      try {
-        totalCharged = chargedAmount(total, method.currency, rates);
-      } catch (error) {
-        if (error instanceof MissingRateError) {
-          throw new ConflictException(
-            'Todavía no hay tasa del BCV cargada para cobrar en esa moneda. Elige otro método o intenta más tarde',
-          );
-        }
-        throw error;
-      }
-
-      // Descuento condicionado: si otra compra se llevó el stock, no pasa.
-      for (const row of rows) {
-        const { count } = await tx.productVariant.updateMany({
-          where: {
-            id: row.variantId,
-            isActive: true,
-            stock: { gte: row.quantity },
-          },
-          data: { stock: { decrement: row.quantity } },
-        });
-        if (count === 0) {
-          throw new ConflictException(
-            `Ya no queda stock suficiente de ${row.variant.product.name} (${row.variant.name})`,
-          );
-        }
-      }
-
-      const now = new Date();
-      const created = await tx.order.create({
-        data: {
-          userId: user.id,
-          paymentMethodId: method.id,
-          chargedCurrency: method.currency,
-          usdVesRate: rates.usdVes,
-          eurVesRate: rates.eurVes,
-          rateEffectiveAt: rates.effectiveAt,
-          subtotalUsdCents: subtotal,
-          comboDiscountUsdCents: quote.comboDiscountUsdCents,
-          couponDiscountUsdCents: quote.couponDiscountUsdCents,
-          couponId: quote.coupon?.id ?? null,
-          couponCode: quote.coupon?.code ?? null,
-          pointsRedeemed: dto.points,
-          pointsDiscountUsdCents: pointsDiscount,
-          shippingUsdCents: shipping,
-          totalUsdCents: total,
-          totalCharged,
-          recipientName: address.recipientName,
-          phone: address.phone,
-          state: address.state,
-          city: address.city,
-          municipality: address.municipality,
-          line1: address.line1,
-          referencePoint: address.referencePoint,
-          shippingZoneName: zone.name,
-          carrier: zone.carrier,
-          paymentDueAt: new Date(now.getTime() + PAYMENT_WINDOW_MS),
-          termsAcceptedAt: now,
-          items: {
-            create: rows.map((r) => ({
-              variantId: r.variantId,
-              productName: r.variant.product.name,
-              productSlug: r.variant.product.slug,
-              variantName: r.variant.name,
-              sku: r.variant.sku,
-              unitPriceUsdCents: r.variant.priceUsdCents,
-              quantity: r.quantity,
-              isReturnable: r.variant.product.isReturnable,
-            })),
-          },
-          history: {
-            create: { toStatus: 'PENDING_PAYMENT', changedById: user.id },
-          },
-        },
-      });
-      await tx.inventoryMovement.createMany({
-        data: rows.map((r) => ({
-          variantId: r.variantId,
-          quantityDelta: -r.quantity,
-          reason: 'SALE' as const,
-          orderId: created.id,
-          createdById: user.id,
-        })),
-      });
-      await this.loyalty.redeem(tx, user.id, created.id, dto.points);
+      const created = await this.place(tx, user.id, rows, dto, rates);
       await tx.cartItem.deleteMany({ where: { userId: user.id } });
-      await this.emails.orderEvent(tx, created.id, 'PENDING_PAYMENT');
-      await this.audit.record(
-        {
-          actorId: user.id,
-          action: 'order.created',
-          entityType: 'order',
-          entityId: created.id,
-          metadata: {
-            number: created.number,
-            totalUsdCents: total,
-            couponCode: quote.coupon?.code ?? null,
-          },
-        },
-        tx,
-      );
       return created;
     });
     return this.getMine(user.id, order.id);
+  }
+
+  // Crea un pedido con las líneas dadas: valida dirección, zona y método,
+  // aplica combos, cupón y puntos, congela la tasa y descuenta el stock.
+  // Quien llama ya bloqueó a la persona dentro de la misma transacción.
+  async place(
+    tx: Tx,
+    userId: string,
+    rows: CartLine[],
+    dto: PlaceOrderInput,
+    rates: OrderRates,
+    opts: { paymentWindowMs?: number; subscriptionId?: string } = {},
+  ) {
+    const blocked = rows.filter((r) => lineIssue(r) !== null);
+    if (blocked.length > 0) {
+      throw new ConflictException(
+        `Revisa tu carrito: ${blocked.map((r) => r.variant.product.name).join(', ')} ya no tiene stock suficiente`,
+      );
+    }
+
+    const address = await this.addresses.findOwn(tx, userId, dto.addressId);
+    const zone = await tx.shippingZone.findFirst({
+      where: { id: dto.shippingZoneId, isActive: true },
+    });
+    if (!zone) throw new BadRequestException('Zona de envío no disponible');
+    if (!zone.states.includes(address.state)) {
+      throw new BadRequestException(
+        `La zona «${zone.name}» no llega a ${address.state}`,
+      );
+    }
+    const method = await tx.paymentMethod.findFirst({
+      where: { id: dto.paymentMethodId, isActive: true },
+    });
+    if (!method) throw new BadRequestException('Método de pago no disponible');
+
+    const quote = await this.promotions.quote(
+      tx,
+      userId,
+      rows.map((r) => ({
+        variantId: r.variantId,
+        quantity: r.quantity,
+        unitPriceUsdCents: r.variant.priceUsdCents,
+      })),
+      dto.couponCode,
+      { lock: true },
+    );
+    const subtotal = quote.subtotalUsdCents;
+    // Puntos: después de combos y cupón, solo sobre los productos.
+    const pointsDiscount = dto.points * POINT_VALUE_CENTS;
+    if (dto.points > 0) {
+      const balance = await this.loyalty.balance(tx, userId);
+      if (dto.points > balance) {
+        throw new BadRequestException(`Tienes ${balance} puntos`);
+      }
+      if (pointsDiscount > quote.itemsTotalUsdCents) {
+        const max =
+          Math.floor(
+            quote.itemsTotalUsdCents / POINT_VALUE_CENTS / REDEEM_STEP,
+          ) * REDEEM_STEP;
+        throw new BadRequestException(
+          `En este pedido puedes usar como máximo ${max} puntos`,
+        );
+      }
+    }
+    const itemsTotal = quote.itemsTotalUsdCents - pointsDiscount;
+    // El envío gratis se mide con lo que se paga por los productos.
+    const shipping = shippingCost(itemsTotal, zone);
+    const total = itemsTotal + shipping;
+    let totalCharged: Prisma.Decimal;
+    try {
+      totalCharged = chargedAmount(total, method.currency, rates);
+    } catch (error) {
+      if (error instanceof MissingRateError) {
+        throw new ConflictException(
+          'Todavía no hay tasa del BCV cargada para cobrar en esa moneda. Elige otro método o intenta más tarde',
+        );
+      }
+      throw error;
+    }
+
+    // Descuento condicionado: si otra compra se llevó el stock, no pasa.
+    for (const row of rows) {
+      const { count } = await tx.productVariant.updateMany({
+        where: {
+          id: row.variantId,
+          isActive: true,
+          stock: { gte: row.quantity },
+        },
+        data: { stock: { decrement: row.quantity } },
+      });
+      if (count === 0) {
+        throw new ConflictException(
+          `Ya no queda stock suficiente de ${row.variant.product.name} (${row.variant.name})`,
+        );
+      }
+    }
+
+    const now = new Date();
+    const created = await tx.order.create({
+      data: {
+        userId: userId,
+        paymentMethodId: method.id,
+        chargedCurrency: method.currency,
+        usdVesRate: rates.usdVes,
+        eurVesRate: rates.eurVes,
+        rateEffectiveAt: rates.effectiveAt,
+        subtotalUsdCents: subtotal,
+        comboDiscountUsdCents: quote.comboDiscountUsdCents,
+        couponDiscountUsdCents: quote.couponDiscountUsdCents,
+        couponId: quote.coupon?.id ?? null,
+        couponCode: quote.coupon?.code ?? null,
+        pointsRedeemed: dto.points,
+        pointsDiscountUsdCents: pointsDiscount,
+        shippingUsdCents: shipping,
+        totalUsdCents: total,
+        totalCharged,
+        recipientName: address.recipientName,
+        phone: address.phone,
+        state: address.state,
+        city: address.city,
+        municipality: address.municipality,
+        line1: address.line1,
+        referencePoint: address.referencePoint,
+        shippingZoneName: zone.name,
+        carrier: zone.carrier,
+        paymentDueAt: new Date(
+          now.getTime() + (opts.paymentWindowMs ?? PAYMENT_WINDOW_MS),
+        ),
+        subscriptionId: opts.subscriptionId ?? null,
+        termsAcceptedAt: now,
+        items: {
+          create: rows.map((r) => ({
+            variantId: r.variantId,
+            productName: r.variant.product.name,
+            productSlug: r.variant.product.slug,
+            variantName: r.variant.name,
+            sku: r.variant.sku,
+            unitPriceUsdCents: r.variant.priceUsdCents,
+            quantity: r.quantity,
+            isReturnable: r.variant.product.isReturnable,
+          })),
+        },
+        history: {
+          create: { toStatus: 'PENDING_PAYMENT', changedById: userId },
+        },
+      },
+    });
+    await tx.inventoryMovement.createMany({
+      data: rows.map((r) => ({
+        variantId: r.variantId,
+        quantityDelta: -r.quantity,
+        reason: 'SALE' as const,
+        orderId: created.id,
+        createdById: userId,
+      })),
+    });
+    await this.loyalty.redeem(tx, userId, created.id, dto.points);
+    await this.emails.orderEvent(tx, created.id, 'PENDING_PAYMENT');
+    await this.audit.record(
+      {
+        actorId: userId,
+        action: 'order.created',
+        entityType: 'order',
+        entityId: created.id,
+        metadata: {
+          number: created.number,
+          totalUsdCents: total,
+          couponCode: quote.coupon?.code ?? null,
+        },
+      },
+      tx,
+    );
+    return created;
   }
 
   async listMine(userId: string, query: ListMyOrdersQuery) {

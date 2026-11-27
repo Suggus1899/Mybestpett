@@ -64,7 +64,7 @@ export async function open(page: Page, path: string) {
 // que usan las pruebas del inventario. Devuelve su nombre, su slug y su SKU.
 // Stock por defecto 10: menos que el seed, para no alterar sus órdenes.
 const created: string[] = [];
-export async function createProduct(priceUsdCents: number, stock = 10) {
+export async function createProduct(priceUsdCents: number, stock = 10, subscribable = false) {
   const id = `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
   const categories: { id: string; slug: string }[] = await fetch(`${API}/categories`).then((r) =>
     r.json(),
@@ -77,6 +77,7 @@ export async function createProduct(priceUsdCents: number, stock = 10) {
       name: `Pelota E2E ${id}`,
       description: 'Producto de prueba',
       categoryId: perros.id,
+      subscribable,
       variants: [{ sku, name: 'Unidad', priceUsdCents, stock }],
     },
     await admin(),

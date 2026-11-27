@@ -478,3 +478,42 @@ export async function updateComboAction(_prev: ActionState, formData: FormData):
   revalidatePath('/combos');
   return { ok: 'Combo guardado' };
 }
+
+// ---------- Suscripciones ----------
+
+export async function createSubscriptionAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const keys = ['variantId', 'quantity', 'intervalDays', 'addressId', 'shippingZoneId', 'paymentMethodId'];
+  const fields = Object.fromEntries(keys.map((k) => [k, text(formData, k)]));
+  const result = await call('POST', '/subscriptions', {
+    variantId: fields.variantId,
+    quantity: Number(fields.quantity),
+    intervalDays: Number(fields.intervalDays),
+    addressId: fields.addressId,
+    shippingZoneId: fields.shippingZoneId,
+    paymentMethodId: fields.paymentMethodId,
+  }, '/cuenta/suscripciones');
+  if (!result.ok) return { error: result.error, fields };
+  revalidatePath('/', 'layout');
+  redirect('/cuenta/suscripciones');
+}
+
+export async function changeSubscriptionAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const id = text(formData, 'id');
+  const action = text(formData, 'action');
+  if (!['pause', 'resume', 'cancel'].includes(action)) return { error: 'Acción no válida' };
+  const result = await call('POST', `/subscriptions/${encodeURIComponent(id)}/${action}`, undefined, '/cuenta/suscripciones');
+  if (!result.ok) return { error: result.error };
+  revalidatePath('/cuenta/suscripciones');
+  return { ok: action === 'pause' ? 'Suscripción pausada' : action === 'resume' ? 'Suscripción reanudada' : 'Suscripción cancelada' };
+}
+
+export async function updateSubscriptionAction(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const id = text(formData, 'id');
+  const result = await call('PATCH', `/subscriptions/${encodeURIComponent(id)}`, {
+    quantity: Number(text(formData, 'quantity')),
+    intervalDays: Number(text(formData, 'intervalDays')),
+  }, '/cuenta/suscripciones');
+  if (!result.ok) return { error: result.error };
+  revalidatePath('/cuenta/suscripciones');
+  return { ok: 'Cambios guardados' };
+}

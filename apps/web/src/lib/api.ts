@@ -95,6 +95,8 @@ export interface ProductDetail {
   description: string;
   species: Species[];
   isReturnable: boolean;
+  // Se puede pedir con entrega recurrente.
+  subscribable: boolean;
   category: { name: string; slug: string };
   brand: { name: string } | null;
   images: Image[];
@@ -197,6 +199,32 @@ export interface PointsSummary extends Page<{
 }> {
   balance: number;
   valueUsdCents: number;
+}
+
+export type SubscriptionStatus = 'ACTIVE' | 'PAUSED' | 'CANCELLED';
+
+export interface Subscription {
+  id: string;
+  quantity: number;
+  intervalDays: number;
+  status: SubscriptionStatus;
+  nextRunAt: string;
+  failures: number;
+  lastError: string | null;
+  addressId: string | null;
+  shippingZoneId: string;
+  paymentMethodId: string;
+  variant: {
+    id: string;
+    sku: string;
+    name: string;
+    priceUsdCents: number;
+    product: { name: string; slug: string; images: Image[] };
+  };
+  address: { id: string; recipientName: string; line1: string; city: string; state: string } | null;
+  shippingZone: { id: string; name: string };
+  paymentMethod: { id: string; name: string };
+  orders: { id: string; number: number; status: OrderStatus; totalUsdCents: number; createdAt: string }[];
 }
 
 export interface Combo {
@@ -496,6 +524,7 @@ export const api = {
     return { error: typeof msg === 'string' ? msg.replace(/^[a-zA-Z.]+: /, '') : 'Ese cupón no aplica' };
   },
   combos: () => get<Combo[]>('/combos'),
+  mySubscriptions: (params: Params) => get<Page<Subscription>>(`/subscriptions${qs(params)}`, true),
   points: (params: Params) => get<PointsSummary>(`/points${qs(params)}`, true),
   manageCombos: (params: Params) => get<Page<ComboRow>>(`/manage/combos${qs(params)}`, true),
   manageCoupons: (params: Params) => get<Page<Coupon>>(`/manage/coupons${qs(params)}`, true),

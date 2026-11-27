@@ -27,5 +27,6 @@ import { ReturnsService } from './returns.service.js';
     ReturnsManageController,
   ],
   providers: [OrdersService, PaymentsService, ReturnsService],
+  exports: [OrdersService],
 })
 export class OrdersModule {}
