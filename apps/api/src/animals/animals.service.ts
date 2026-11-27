@@ -34,8 +34,12 @@ const include = {
 } satisfies Prisma.AnimalInclude;
 
 // Solo especies domésticas: la fauna silvestre protegida no se publica.
-function assertLiveSpecies(species: Species, breed: string | null | undefined) {
-  const problem = liveSpeciesProblem(species, breed);
+function assertLiveSpecies(
+  species: Species,
+  breed: string | null | undefined,
+  listingType: AnimalListingType,
+) {
+  const problem = liveSpeciesProblem(species, breed, listingType);
   if (problem) throw new BadRequestException(problem);
 }
 
@@ -78,7 +82,7 @@ export class AnimalsService {
 
   async create(actor: AuthUser, dto: CreateAnimalDto) {
     this.assertCanManage(actor, dto.listingType);
-    assertLiveSpecies(dto.species, dto.breed);
+    assertLiveSpecies(dto.species, dto.breed, dto.listingType);
     const { images, ...fields } = dto;
     return this.prisma.$transaction(async (tx) => {
       const animal = await tx.animal.create({
@@ -118,6 +122,7 @@ export class AnimalsService {
         assertLiveSpecies(
           dto.species ?? before.species,
           dto.breed === undefined ? before.breed : dto.breed,
+          before.listingType,
         );
       }
 
