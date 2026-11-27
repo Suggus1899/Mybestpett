@@ -86,9 +86,18 @@ class HomeScreen extends ConsumerWidget {
                     style: text.headlineSmall,
                   ),
                   const SizedBox(height: 12),
-                  FilledButton(
-                    onPressed: () => context.go('/productos?ofertas=1'),
-                    child: const Text('Ver ofertas'),
+                  Wrap(
+                    spacing: 8,
+                    children: [
+                      FilledButton(
+                        onPressed: () => context.go('/productos?ofertas=1'),
+                        child: const Text('Ver ofertas'),
+                      ),
+                      OutlinedButton(
+                        onPressed: () => context.push('/combos'),
+                        child: const Text('Ver combos'),
+                      ),
+                    ],
                   ),
                 ],
               ),

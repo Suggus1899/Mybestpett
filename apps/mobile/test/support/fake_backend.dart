@@ -93,6 +93,60 @@ class FakeBackend {
     ),
   ];
 
+  /// Combos: id, name, slug, description, priceUsdCents, isActive e items
+  /// ({variantId, quantity}).
+  final combos = <Json>[];
+
+  /// Cupones: code, description, type (PERCENT|FIXED), value,
+  /// minSubtotalUsdCents, maxDiscountUsdCents, startsAt, endsAt,
+  /// maxRedemptions, perUserLimit, isActive.
+  final coupons = <Json>[];
+
+  static Json combo({
+    required String slug,
+    required String name,
+    required int price,
+    required Map<String, int> items,
+    String description = 'Para empezar bien.',
+    bool active = true,
+  }) => {
+    'id': 'cb-$slug',
+    'name': name,
+    'slug': slug,
+    'description': description,
+    'priceUsdCents': price,
+    'isActive': active,
+    'items': [
+      for (final e in items.entries) {'variantId': e.key, 'quantity': e.value},
+    ],
+  };
+
+  static Json coupon(
+    String code, {
+    String description = 'Descuento de prueba',
+    String type = 'PERCENT',
+    int value = 10,
+    int minSubtotalUsdCents = 0,
+    int? maxDiscountUsdCents,
+    DateTime? startsAt,
+    DateTime? endsAt,
+    int? maxRedemptions,
+    int perUserLimit = 1,
+    bool active = true,
+  }) => {
+    'code': code,
+    'description': description,
+    'type': type,
+    'value': value,
+    'minSubtotalUsdCents': minSubtotalUsdCents,
+    'maxDiscountUsdCents': maxDiscountUsdCents,
+    'startsAt': startsAt,
+    'endsAt': endsAt,
+    'maxRedemptions': maxRedemptions,
+    'perUserLimit': perUserLimit,
+    'isActive': active,
+  };
+
   /// Reseñas: id, productId, email, rating, title, body, status,
   /// hiddenReason, createdAt.
   final reviews = <Json>[];
@@ -486,6 +540,18 @@ class FakeBackend {
           {'species': s, 'allowed': 'any', 'note': ''},
       ]);
     }
+    if (m == 'GET' && path == '/combos') {
+      return _json(200, [
+        for (final c in combos)
+          if (c['isActive'] == true &&
+              _comboSellable(c) &&
+              _comboSavings(c) > 0)
+            _presentCombo(c),
+      ]);
+    }
+    if (m == 'GET' && segments.length == 2 && segments[0] == 'combos') {
+      return _json(200, _presentCombo(_comboBySlug(segments[1])));
+    }
     if (m == 'GET' && path == '/shipping-zones') return _json(200, zones);
     if (m == 'GET' && path == '/payment-methods') return _json(200, methods);
 
@@ -493,7 +559,15 @@ class FakeBackend {
     if (segments.isNotEmpty && segments[0] == 'cart') {
       final email = _auth(r);
       final cart = carts.putIfAbsent(email, () => {});
-      if (m == 'GET' && segments.length == 1) return _json(200, _cart(email));
+      if (m == 'GET' && segments.length == 1) {
+        return _json(
+          200,
+          _cart(email, coupon: r.url.queryParameters['coupon']),
+        );
+      }
+      if (m == 'POST' && segments.length == 3 && segments[1] == 'combos') {
+        return _json(201, _addCombo(email, segments[2], _body(r)));
+      }
       if (m == 'DELETE' && segments.length == 1) {
         cart.clear();
         return _json(200, _cart(email));
@@ -925,7 +999,7 @@ class FakeBackend {
     carts.putIfAbsent(email, () => {})[variantId] = quantity;
   }
 
-  Json _cart(String email) {
+  Json _cart(String email, {String? coupon}) {
     final items = <Json>[];
     for (final MapEntry(key: id, value: qty) in (carts[email] ?? {}).entries) {
       final v = variantById(id)!;
@@ -948,16 +1022,227 @@ class FakeBackend {
         'available': issue == 'unavailable' ? 0 : (stock < 20 ? stock : 20),
       });
     }
-    final valid = items.where((i) => i['issue'] == null);
+    final valid = items.where((i) => i['issue'] == null).toList();
+    final subtotal = valid.fold<int>(
+      0,
+      (n, i) => n + (i['lineTotalUsdCents']! as int),
+    );
+    final applied = _comboDiscounts({
+      for (final i in valid) i['variantId']! as String: i['quantity']! as int,
+    });
+    final comboDiscount = applied.fold<int>(
+      0,
+      (n, c) => n + (c['savingsUsdCents']! as int),
+    );
+    final base = subtotal - comboDiscount;
+    final applying = coupon == null || coupon.isEmpty
+        ? null
+        : _usableCoupon(coupon, email, base);
+    final couponAmount = applying == null ? 0 : _couponDiscount(base, applying);
     return {
       'items': items,
       'itemCount': items.fold<int>(0, (n, i) => n + (i['quantity']! as int)),
-      'subtotalUsdCents': valid.fold<int>(
-        0,
-        (n, i) => n + (i['lineTotalUsdCents']! as int),
-      ),
+      'subtotalUsdCents': subtotal,
+      'combos': applied,
+      'comboDiscountUsdCents': comboDiscount,
+      'coupon': applying == null
+          ? null
+          : {
+              'code': applying['code'],
+              'description': applying['description'],
+              'discountUsdCents': couponAmount,
+            },
+      'itemsTotalUsdCents': base - couponAmount,
       'canCheckout': items.isNotEmpty && valid.length == items.length,
     };
+  }
+
+  // ---------- Combos y cupones (misma lógica que la API) ----------
+
+  Json _comboBySlug(String slug) {
+    final c = combos
+        .where((c) => c['slug'] == slug && c['isActive'] == true)
+        .firstOrNull;
+    if (c == null || !_comboSellable(c) || _comboSavings(c) <= 0) {
+      throw const _HttpError(404, 'Combo no encontrado');
+    }
+    return c;
+  }
+
+  List<Json> _comboItems(Json c) => (c['items']! as List).cast<Json>();
+
+  bool _comboSellable(Json c) => _comboItems(c).every((i) {
+    final v = variantById(i['variantId']! as String);
+    return v != null &&
+        v['isActive'] == true &&
+        productOfVariant(i['variantId']! as String)!['isActive'] == true;
+  });
+
+  int _comboRegular(Json c) => _comboItems(c).fold(
+    0,
+    (n, i) =>
+        n +
+        (variantById(i['variantId']! as String)!['priceUsdCents']! as int) *
+            (i['quantity']! as int),
+  );
+
+  int _comboSavings(Json c) => _comboRegular(c) - (c['priceUsdCents']! as int);
+
+  Json _presentCombo(Json c) => {
+    'id': c['id'],
+    'name': c['name'],
+    'slug': c['slug'],
+    'description': c['description'],
+    'priceUsdCents': c['priceUsdCents'],
+    'regularUsdCents': _comboRegular(c),
+    'savingsUsdCents': _comboSavings(c),
+    'available': _comboItems(c)
+        .map(
+          (i) =>
+              (variantById(i['variantId']! as String)!['stock']! as int) ~/
+              (i['quantity']! as int),
+        )
+        .reduce((a, b) => a < b ? a : b),
+    'items': [
+      for (final i in _comboItems(c))
+        {
+          'quantity': i['quantity'],
+          'variantId': i['variantId'],
+          'variantName': variantById(i['variantId']! as String)!['name'],
+          'sku': variantById(i['variantId']! as String)!['sku'],
+          'unitPriceUsdCents': variantById(
+            i['variantId']! as String,
+          )!['priceUsdCents'],
+          'product': {
+            'name': productOfVariant(i['variantId']! as String)!['name'],
+            'slug': productOfVariant(i['variantId']! as String)!['slug'],
+            'image': null,
+          },
+        },
+    ],
+  };
+
+  /// Cuántos combos completos hay en el carrito: primero los que más ahorran
+  /// y una unidad cuenta para un solo combo.
+  List<Json> _comboDiscounts(Map<String, int> cart) {
+    final left = {...cart};
+    final candidates =
+        combos
+            .where(
+              (c) =>
+                  c['isActive'] == true &&
+                  _comboSellable(c) &&
+                  _comboSavings(c) > 0,
+            )
+            .toList()
+          ..sort((a, b) => _comboSavings(b).compareTo(_comboSavings(a)));
+    final applied = <Json>[];
+    for (final c in candidates) {
+      final count = _comboItems(c)
+          .map((i) => (left[i['variantId']] ?? 0) ~/ (i['quantity']! as int))
+          .reduce((a, b) => a < b ? a : b);
+      if (count <= 0) continue;
+      for (final i in _comboItems(c)) {
+        left[i['variantId']! as String] =
+            left[i['variantId']]! - (i['quantity']! as int) * count;
+      }
+      applied.add({
+        'comboId': c['id'],
+        'name': c['name'],
+        'count': count,
+        'savingsUsdCents': _comboSavings(c) * count,
+      });
+    }
+    return applied;
+  }
+
+  Json _addCombo(String email, String slug, Json body) {
+    final c = _comboBySlug(slug);
+    final times = (body['quantity'] as int?) ?? 1;
+    if (times < 1 || times > 5) {
+      throw const _HttpError(400, ['quantity: Cantidad inválida']);
+    }
+    final cart = carts.putIfAbsent(email, () => {});
+    final wanted = <String, int>{};
+    for (final i in _comboItems(c)) {
+      final id = i['variantId']! as String;
+      final qty = (cart[id] ?? 0) + (i['quantity']! as int) * times;
+      final name = productOfVariant(id)!['name'];
+      final v = variantById(id)!;
+      if (qty > 20) {
+        throw _HttpError(
+          400,
+          'Puedes llevar hasta 20 unidades de $name (${v['name']})',
+        );
+      }
+      final stock = v['stock']! as int;
+      if (qty > stock) {
+        throw _HttpError(
+          409,
+          stock == 0
+              ? '$name (${v['name']}) está agotado'
+              : 'Solo hay $stock disponibles de $name (${v['name']})',
+        );
+      }
+      wanted[id] = qty;
+    }
+    // Todo o nada: solo se escribe si cada producto alcanzó.
+    cart.addAll(wanted);
+    return _cart(email);
+  }
+
+  Json _usableCoupon(String code, String email, int base) {
+    final upper = code.trim().toUpperCase();
+    if (!RegExp(r'^[A-Z0-9][A-Z0-9-]{2,29}$').hasMatch(upper)) {
+      throw const _HttpError(400, [
+        'coupon: El cupón tiene de 3 a 30 letras, números o guiones',
+      ]);
+    }
+    final c = coupons.where((c) => c['code'] == upper).firstOrNull;
+    if (c == null || c['isActive'] != true) {
+      throw const _HttpError(400, 'Ese cupón no existe o ya no está activo');
+    }
+    final startsAt = c['startsAt'] as DateTime?;
+    final endsAt = c['endsAt'] as DateTime?;
+    if (startsAt != null && startsAt.isAfter(now)) {
+      throw const _HttpError(400, 'Ese cupón todavía no está vigente');
+    }
+    if (endsAt != null && !endsAt.isAfter(now)) {
+      throw const _HttpError(400, 'Ese cupón ya venció');
+    }
+    final min = c['minSubtotalUsdCents']! as int;
+    if (base < min) {
+      throw _HttpError(
+        400,
+        'Ese cupón aplica en compras desde \$${(min / 100).toStringAsFixed(2)}',
+      );
+    }
+    final used = orders.where(
+      (o) => o['couponCode'] == upper && o['status'] != 'CANCELLED',
+    );
+    final maxRedemptions = c['maxRedemptions'] as int?;
+    if (maxRedemptions != null && used.length >= maxRedemptions) {
+      throw const _HttpError(400, 'Ese cupón ya se agotó');
+    }
+    final perUser = c['perUserLimit']! as int;
+    if (used.where((o) => o['_owner'] == email).length >= perUser) {
+      throw _HttpError(
+        400,
+        perUser == 1
+            ? 'Ya usaste este cupón'
+            : 'Ya usaste este cupón $perUser veces',
+      );
+    }
+    return c;
+  }
+
+  int _couponDiscount(int base, Json c) {
+    final raw = c['type'] == 'PERCENT'
+        ? base * (c['value']! as int) ~/ 100
+        : c['value']! as int;
+    final cap = c['maxDiscountUsdCents'] as int?;
+    final capped = cap == null ? raw : (raw < cap ? raw : cap);
+    return capped > base ? base : (capped < 0 ? 0 : capped);
   }
 
   http.Response _checkout(String email, Json body) {
@@ -966,7 +1251,7 @@ class FakeBackend {
         'acceptTerms: Debes aceptar los términos y condiciones',
       ]);
     }
-    final cart = _cart(email);
+    final cart = _cart(email, coupon: body['couponCode'] as String?);
     final items = cart['items']! as List<Json>;
     if (items.isEmpty) throw const _HttpError(400, 'El carrito está vacío');
     if (cart['canCheckout'] != true) {
@@ -999,10 +1284,13 @@ class FakeBackend {
     }
 
     final subtotal = cart['subtotalUsdCents']! as int;
-    final shipping = subtotal >= (zone['freeOverUsdCents']! as int)
+    // El envío gratis se mide con lo que se paga por los productos.
+    final itemsTotal = cart['itemsTotalUsdCents']! as int;
+    final shipping = itemsTotal >= (zone['freeOverUsdCents']! as int)
         ? 0
         : zone['priceUsdCents']! as int;
-    final total = subtotal + shipping;
+    final total = itemsTotal + shipping;
+    final couponInfo = cart['coupon'] as Json?;
     final charged = switch (method['currency']) {
       'VES' => (total * double.parse(rates.usdVes!) / 100).toStringAsFixed(2),
       'EUR' =>
@@ -1029,6 +1317,9 @@ class FakeBackend {
       'eurVesRate': rates.eurVes,
       'rateEffectiveAt': '2026-11-26T04:00:00.000Z',
       'subtotalUsdCents': subtotal,
+      'comboDiscountUsdCents': cart['comboDiscountUsdCents'],
+      'couponDiscountUsdCents': couponInfo?['discountUsdCents'] ?? 0,
+      'couponCode': couponInfo?['code'],
       'shippingUsdCents': shipping,
       'totalUsdCents': total,
       'totalCharged': charged,
@@ -1209,6 +1500,14 @@ class FakeBackend {
       }
       refund +=
           (item['unitPriceUsdCents']! as int) * (line['quantity']! as int);
+    }
+    // Con combos o cupón se devuelve lo pagado, no el precio de lista.
+    final discount =
+        (order['comboDiscountUsdCents']! as int) +
+        (order['couponDiscountUsdCents']! as int);
+    final listSubtotal = order['subtotalUsdCents']! as int;
+    if (discount != 0 && listSubtotal != 0) {
+      refund = refund * (listSubtotal - discount) ~/ listSubtotal;
     }
     returns.insert(0, {
       'id': 'ret-${requests.length}',

@@ -10,6 +10,7 @@ import 'features/animals/animal_screen.dart';
 import 'features/animals/animals_screen.dart';
 import 'features/cart/cart_screen.dart';
 import 'features/catalog/catalog_screen.dart';
+import 'features/catalog/combos_screen.dart';
 import 'features/catalog/product_screen.dart';
 import 'features/checkout/checkout_screen.dart';
 import 'features/home/home_screen.dart';
@@ -120,6 +121,11 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/productos/:slug',
         builder: (_, state) =>
             ProductScreen(slug: state.pathParameters['slug']!),
+      ),
+      GoRoute(
+        parentNavigatorKey: _rootKey,
+        path: '/combos',
+        builder: (_, _) => const CombosScreen(),
       ),
       GoRoute(
         parentNavigatorKey: _rootKey,

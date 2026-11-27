@@ -90,7 +90,8 @@ class _CartView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final rate = ref.watch(usdVesProvider);
-    final missing = freeShippingFromCents - cart.subtotalUsdCents;
+    // El envío gratis se mide con lo que se paga, ya con los combos.
+    final missing = freeShippingFromCents - cart.itemsTotalUsdCents;
     return Column(
       children: [
         Expanded(
@@ -115,6 +116,37 @@ class _CartView extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                if (cart.combos.isNotEmpty)
+                  Row(
+                    children: [
+                      const Expanded(child: Text('Precio por separado')),
+                      Text(formatUsd(cart.subtotalUsdCents)),
+                    ],
+                  ),
+                for (final c in cart.combos)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 2),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            c.label,
+                            style: const TextStyle(
+                              color: PetbfColors.petbf,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          '−${formatUsd(c.savingsUsdCents)}',
+                          style: const TextStyle(
+                            color: PetbfColors.petbf,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 Row(
                   children: [
                     Text(
@@ -127,7 +159,7 @@ class _CartView extends ConsumerWidget {
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Text(
-                          formatUsd(cart.subtotalUsdCents),
+                          formatUsd(cart.itemsTotalUsdCents),
                           style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.w800,
@@ -135,7 +167,7 @@ class _CartView extends ConsumerWidget {
                         ),
                         if (rate != null)
                           Text(
-                            formatBs(cart.subtotalUsdCents, rate),
+                            formatBs(cart.itemsTotalUsdCents, rate),
                             style: const TextStyle(
                               fontSize: 13,
                               color: PetbfColors.slate,
@@ -154,6 +186,10 @@ class _CartView extends ConsumerWidget {
                     fontSize: 13,
                     color: PetbfColors.slate,
                   ),
+                ),
+                const Text(
+                  '¿Tienes un cupón? Lo aplicas al finalizar la compra.',
+                  style: TextStyle(fontSize: 13, color: PetbfColors.slate),
                 ),
                 if (!cart.canCheckout) ...[
                   const SizedBox(height: 6),

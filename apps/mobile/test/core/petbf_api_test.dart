@@ -692,6 +692,225 @@ void main() {
     });
   });
 
+  group('cupones y combos', () {
+    Json cartJson({
+      List<Json> combos = const [],
+      Json? coupon,
+      bool legacy = false,
+    }) {
+      final json = <String, Object?>{
+        'items': <Object?>[],
+        'itemCount': 3,
+        'subtotalUsdCents': 2870,
+        'canCheckout': true,
+        'combos': combos,
+        'comboDiscountUsdCents': combos.fold<int>(
+          0,
+          (n, c) => n + (c['savingsUsdCents']! as int),
+        ),
+        'coupon': coupon,
+        'itemsTotalUsdCents': 2500,
+      };
+      if (legacy) {
+        json
+          ..remove('combos')
+          ..remove('comboDiscountUsdCents')
+          ..remove('coupon')
+          ..remove('itemsTotalUsdCents');
+      }
+      return json;
+    }
+
+    test('el carrito lee combos, cupón y lo que se paga', () {
+      final cart = Cart.fromJson(
+        cartJson(
+          combos: [
+            {
+              'comboId': 'cb-1',
+              'name': 'Kit',
+              'count': 2,
+              'savingsUsdCents': 370,
+            },
+          ],
+          coupon: {
+            'code': 'VERANO-10',
+            'description': '10 % menos',
+            'discountUsdCents': 250,
+          },
+        ),
+      );
+      expect(cart.subtotalUsdCents, 2870);
+      expect(cart.itemsTotalUsdCents, 2500);
+      expect(cart.comboDiscountUsdCents, 370);
+      expect(cart.combos.single.label, 'Combo Kit × 2');
+      expect(cart.coupon!.code, 'VERANO-10');
+      expect(cart.coupon!.discountUsdCents, 250);
+      expect(cart.hasDiscounts, isTrue);
+    });
+
+    test('un combo de una sola unidad no lleva "× 1"', () {
+      const combo = AppliedCombo(
+        comboId: 'c',
+        name: 'Kit',
+        count: 1,
+        savingsUsdCents: 1,
+      );
+      expect(combo.label, 'Combo Kit');
+    });
+
+    test('una API anterior no manda descuentos: se leen en cero', () {
+      final cart = Cart.fromJson(cartJson(legacy: true));
+      expect(cart.combos, isEmpty);
+      expect(cart.coupon, isNull);
+      expect(cart.comboDiscountUsdCents, 0);
+      expect(cart.itemsTotalUsdCents, cart.subtotalUsdCents);
+      expect(cart.hasDiscounts, isFalse);
+      expect(Cart.empty.itemsTotalUsdCents, 0);
+    });
+
+    test('un carrito con forma inesperada falla', () {
+      expect(
+        () => Cart.fromJson({...cartJson(), 'combos': 'no'}),
+        throwsFormatException,
+      );
+      expect(
+        () => Cart.fromJson({
+          ...cartJson(),
+          'coupon': {'code': 'X'},
+        }),
+        throwsFormatException,
+      );
+    });
+
+    test('cart(coupon:) manda el código y sin él no manda nada', () async {
+      await api.login(email: 'ana@petbf.com', password: 'secreta123');
+      backend.coupons.add(FakeBackend.coupon('VERANO-10'));
+      backend.carts['ana@petbf.com'] = {'v-mord': 2};
+      await api.cart();
+      expect(backend.called('GET', '/cart').last.url.query, isEmpty);
+      final cart = await api.cart(coupon: 'VERANO-10');
+      expect(
+        backend.called('GET', '/cart').last.url.queryParameters['coupon'],
+        'VERANO-10',
+      );
+      expect(cart.coupon!.discountUsdCents, 178);
+      expect(cart.itemsTotalUsdCents, 1602);
+    });
+
+    test('un cupón que no aplica da el motivo de la API', () async {
+      await api.login(email: 'ana@petbf.com', password: 'secreta123');
+      backend.carts['ana@petbf.com'] = {'v-mord': 2};
+      await expectLater(
+        api.cart(coupon: 'FANTASMA'),
+        throwsA(
+          isA<ApiException>()
+              .having((e) => e.status, 'status', 400)
+              .having(
+                (e) => e.message,
+                'message',
+                'Ese cupón no existe o ya no está activo',
+              ),
+        ),
+      );
+    });
+
+    test('checkout manda couponCode solo si lo hay', () async {
+      await api.login(email: 'ana@petbf.com', password: 'secreta123');
+      backend.coupons.add(FakeBackend.coupon('VERANO-10'));
+      backend.addAddress('ana@petbf.com');
+      backend.carts['ana@petbf.com'] = {'v-mord': 2};
+      final order = await api.checkout(
+        addressId: 'ad-1',
+        shippingZoneId: 'z-caracas',
+        paymentMethodId: 'm-pm',
+        couponCode: 'VERANO-10',
+      );
+      expect(lastBody('POST', '/orders')['couponCode'], 'VERANO-10');
+      expect(order.couponCode, 'VERANO-10');
+      expect(order.couponDiscountUsdCents, 178);
+      expect(order.comboDiscountUsdCents, 0);
+      expect(order.subtotalUsdCents, 1780);
+      expect(order.totalUsdCents, 1602 + 300);
+
+      backend.carts['ana@petbf.com'] = {'v-mord': 1};
+      final plain = await api.checkout(
+        addressId: 'ad-1',
+        shippingZoneId: 'z-caracas',
+        paymentMethodId: 'm-pm',
+      );
+      expect(lastBody('POST', '/orders').containsKey('couponCode'), isFalse);
+      expect(plain.couponCode, isNull);
+    });
+
+    test('Order.refundFor devuelve lo pagado', () async {
+      await api.login(email: 'ana@petbf.com', password: 'secreta123');
+      backend.addAddress('ana@petbf.com');
+      backend.carts['ana@petbf.com'] = {'v-mord': 2};
+      backend.coupons.add(FakeBackend.coupon('VERANO-10'));
+      final order = await api.checkout(
+        addressId: 'ad-1',
+        shippingZoneId: 'z-caracas',
+        paymentMethodId: 'm-pm',
+        couponCode: 'VERANO-10',
+      );
+      expect(order.refundFor(890), 801);
+      expect(order.refundFor(1780), 1602);
+      expect(order.refundFor(0), 0);
+    });
+
+    test('lista y añade combos', () async {
+      backend.combos.add(
+        FakeBackend.combo(
+          slug: 'kit',
+          name: 'Kit',
+          price: 2500,
+          items: {'v-1kg': 1, 'v-mord': 2},
+        ),
+      );
+      final combos = await api.combos();
+      final kit = combos.single;
+      expect(kit.regularUsdCents, 2870);
+      expect(kit.savingsUsdCents, 370);
+      expect(kit.available, 10);
+      expect(kit.maxToAdd, 5);
+      expect(kit.items.map((i) => i.quantity), [1, 2]);
+      expect(kit.items.first.productName, 'Alimento seco adulto');
+      expect(kit.items.first.variantName, '1 kg');
+
+      await api.login(email: 'ana@petbf.com', password: 'secreta123');
+      final cart = await api.addCombo('kit', 2);
+      expect(lastBody('POST', '/cart/combos/kit'), {'quantity': 2});
+      expect(cart.combos.single.count, 2);
+      expect(cart.comboDiscountUsdCents, 740);
+
+      await expectLater(
+        api.addCombo('no-existe', 1),
+        throwsA(
+          isA<ApiException>().having((e) => e.isNotFound, 'isNotFound', true),
+        ),
+      );
+    });
+
+    test('maxToAdd es el stock cuando alcanza para menos de 5', () {
+      Combo withStock(int n) => Combo.fromJson({
+        'id': 'c',
+        'name': 'K',
+        'slug': 'k',
+        'description': null,
+        'priceUsdCents': 1,
+        'regularUsdCents': 2,
+        'savingsUsdCents': 1,
+        'available': n,
+        'items': <Object?>[],
+      });
+      expect(withStock(0).maxToAdd, 0);
+      expect(withStock(3).maxToAdd, 3);
+      expect(withStock(5).maxToAdd, 5);
+      expect(withStock(40).maxToAdd, 5);
+      expect(withStock(3).description, '');
+    });
+  });
+
   group('rutas', () {
     test('safeNext solo acepta rutas internas', () {
       expect(safeNext('/carrito'), '/carrito');

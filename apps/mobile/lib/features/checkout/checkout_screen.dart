@@ -7,6 +7,7 @@ import '../../core/format.dart';
 import '../../core/money.dart';
 import '../../core/providers.dart';
 import '../../core/theme.dart';
+import '../../core/validators.dart';
 import '../../models/catalog.dart';
 import '../../models/shop.dart';
 import '../../widgets/common.dart';
@@ -118,6 +119,63 @@ class _CheckoutFormState extends ConsumerState<CheckoutForm> {
   bool _sending = false;
   String? _error;
 
+  // Cupón: el carrito "probado" por la API con el código, o el error.
+  final _coupon = TextEditingController();
+  Cart? _quoted;
+  String? _couponError;
+  bool _checkingCoupon = false;
+
+  /// El carrito con el cupón aplicado, si lo hay.
+  Cart get _cart => _quoted ?? widget.cart;
+
+  @override
+  void dispose() {
+    _coupon.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(CheckoutForm old) {
+    super.didUpdateWidget(old);
+    // El carrito cambió (stock, precios): el cupón probado ya no vale.
+    if (!identical(old.cart, widget.cart)) _quoted = null;
+  }
+
+  Future<void> _applyCoupon() async {
+    final problem = validateCouponCode(_coupon.text);
+    if (problem != null) {
+      setState(() => _couponError = problem);
+      return;
+    }
+    if (_checkingCoupon) return;
+    setState(() {
+      _couponError = null;
+      _checkingCoupon = true;
+    });
+    try {
+      final quoted = await ref
+          .read(apiProvider)
+          .cart(coupon: normalizeCouponCode(_coupon.text));
+      if (mounted) setState(() => _quoted = quoted);
+    } on ApiException catch (e) {
+      // Sin cupón se sigue con el carrito normal.
+      if (mounted) {
+        setState(() {
+          _quoted = null;
+          _couponError = e.message;
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _checkingCoupon = false);
+    }
+  }
+
+  void _removeCoupon() => setState(() {
+    _quoted = null;
+    _couponError = null;
+    _coupon.clear();
+  });
+
   Address get _address =>
       widget.addresses.where((a) => a.id == _addressId).firstOrNull ??
       widget.addresses.firstWhere(
@@ -159,13 +217,19 @@ class _CheckoutFormState extends ConsumerState<CheckoutForm> {
             addressId: _address.id,
             shippingZoneId: zone.id,
             paymentMethodId: method.id,
+            couponCode: _cart.coupon?.code,
           );
       ref.read(cartProvider.notifier).markEmpty();
       ref.invalidate(ordersProvider);
       if (mounted) context.pushReplacement('/pedidos/${order.id}');
     } on ApiException catch (e) {
       if (!mounted) return;
-      setState(() => _error = e.message);
+      setState(() {
+        _error = e.message;
+        // Si el cupón dejó de valer (se agotó, venció), se quita para que
+        // se vea el total real y se pueda reintentar sin él.
+        if (e.status == 400 && _quoted != null) _quoted = null;
+      });
       // Stock o precios cambiaron: se recarga el carrito para mostrar lo real.
       if (e.status == 409 || e.status == 400) ref.invalidate(cartProvider);
     } finally {
@@ -179,9 +243,11 @@ class _CheckoutFormState extends ConsumerState<CheckoutForm> {
     final address = _address;
     final zone = _zone;
     final method = _method;
-    final subtotal = widget.cart.subtotalUsdCents;
-    final shipping = zone?.costFor(subtotal) ?? 0;
-    final total = subtotal + shipping;
+    final cart = _cart;
+    // El envío gratis se mide con lo que se paga por los productos.
+    final items = cart.itemsTotalUsdCents;
+    final shipping = zone?.costFor(items) ?? 0;
+    final total = items + shipping;
     final estimate = method == null ? null : _estimate(method, total);
 
     return ListView(
@@ -259,7 +325,7 @@ class _CheckoutFormState extends ConsumerState<CheckoutForm> {
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                     subtitle: Text(
-                      '${z.carrier} · ${z.costFor(subtotal) == 0 ? 'Gratis' : formatUsd(z.priceUsdCents)}',
+                      '${z.carrier} · ${z.costFor(items) == 0 ? 'Gratis' : formatUsd(z.priceUsdCents)}',
                     ),
                   ),
               ],
@@ -298,11 +364,78 @@ class _CheckoutFormState extends ConsumerState<CheckoutForm> {
             ),
           ),
         const SizedBox(height: 16),
+        Text('Cupón de descuento', style: text.titleMedium),
+        const SizedBox(height: 8),
+        if (cart.coupon case final coupon?)
+          Panel(
+            color: PetbfColors.petbfSoft,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '${coupon.code}: ${coupon.description}',
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                TextButton(
+                  onPressed: _removeCoupon,
+                  child: const Text('Quitar cupón'),
+                ),
+              ],
+            ),
+          )
+        else
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _coupon,
+                  maxLength: 30,
+                  textCapitalization: TextCapitalization.characters,
+                  autocorrect: false,
+                  onSubmitted: (_) => _applyCoupon(),
+                  decoration: InputDecoration(
+                    labelText: 'Código del cupón',
+                    counterText: '',
+                    errorText: _couponError,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: OutlinedButton(
+                  onPressed: _checkingCoupon ? null : _applyCoupon,
+                  child: Text(_checkingCoupon ? 'Probando…' : 'Aplicar'),
+                ),
+              ),
+            ],
+          ),
+        const SizedBox(height: 4),
+        const Text(
+          'Un cupón por pedido. Se aplica sobre los productos, no sobre el envío.',
+          style: TextStyle(fontSize: 13, color: PetbfColors.slate),
+        ),
+        const SizedBox(height: 16),
         Panel(
           color: PetbfColors.mist,
           child: Column(
             children: [
-              _Row('Subtotal', formatUsd(subtotal)),
+              _Row(
+                cart.hasDiscounts ? 'Productos (precio de lista)' : 'Subtotal',
+                formatUsd(cart.subtotalUsdCents),
+              ),
+              for (final c in cart.combos)
+                _Row(c.label, '−${formatUsd(c.savingsUsdCents)}', accent: true),
+              if (cart.coupon case final coupon?)
+                _Row(
+                  'Cupón ${coupon.code}',
+                  '−${formatUsd(coupon.discountUsdCents)}',
+                  accent: true,
+                ),
+              if (cart.hasDiscounts)
+                _Row('Productos', formatUsd(cart.itemsTotalUsdCents)),
               _Row(
                 'Envío',
                 zone == null
@@ -364,15 +497,21 @@ class _CheckoutFormState extends ConsumerState<CheckoutForm> {
 }
 
 class _Row extends StatelessWidget {
-  const _Row(this.label, this.value, {this.bold = false});
+  const _Row(this.label, this.value, {this.bold = false, this.accent = false});
   final String label;
   final String value;
   final bool bold;
+  final bool accent;
   @override
   Widget build(BuildContext context) {
     final style = TextStyle(
-      fontWeight: bold ? FontWeight.w800 : FontWeight.w400,
+      fontWeight: bold
+          ? FontWeight.w800
+          : accent
+          ? FontWeight.w700
+          : FontWeight.w400,
       fontSize: bold ? 16 : 15,
+      color: accent ? PetbfColors.petbf : null,
     );
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),

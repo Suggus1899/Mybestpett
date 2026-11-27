@@ -260,4 +260,22 @@ void main() {
       'La reseña admite hasta 1000 caracteres',
     );
   });
+
+  test('cupón: de 3 a 30 letras, números o guiones', () {
+    expect(validateCouponCode(null), 'Escribe el código del cupón');
+    expect(validateCouponCode('   '), 'Escribe el código del cupón');
+    const invalid = 'El cupón tiene de 3 a 30 letras, números o guiones';
+    for (final bad in ['AB', '-AB', 'VER ANO', 'VERANO!', 'ÑANDÚ', 'A' * 31]) {
+      expect(validateCouponCode(bad), invalid, reason: bad);
+    }
+    for (final good in ['ABC', 'verano-10', ' VERANO-10 ', 'A' * 30, '1-2']) {
+      expect(validateCouponCode(good), isNull, reason: good);
+    }
+  });
+
+  test('cupón: se normaliza como la API (recorta y sube a mayúsculas)', () {
+    expect(normalizeCouponCode(' verano-10 '), 'VERANO-10');
+    expect(normalizeCouponCode('ab'), isNull);
+    expect(normalizeCouponCode(''), isNull);
+  });
 }

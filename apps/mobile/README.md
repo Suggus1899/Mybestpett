@@ -13,8 +13,9 @@ BCV, compra solo con cuenta, pago reportado y verificado por el equipo.
 | Producto | Galería, presentaciones, existencia, cantidad (máx. 20), si admite devolución, valoración, reseñas y "También te puede gustar" |
 | Reseñas | Promedio y distribución, orden (recientes, mejores, peores), 10 por página; quien recibió el producto escribe, edita o borra la suya (1 a 5 estrellas, título opcional de 80, texto de 10 a 1000) y ve si el equipo la ocultó |
 | Animales | Venta y adopción por separado, solo las especies que la tienda acepta, ficha con edad, vacunas y esterilización |
-| Carrito | Cambiar cantidades, avisos de stock, envío gratis desde 25 $ |
-| Checkout | Dirección (o crear una), zonas que llegan a ese estado, método de pago con el monto estimado en su moneda, términos |
+| Combos | Lista de combos (productos juntos a menor precio), cuántos alcanzan con el stock, añadir de 1 a 5 de una vez (todo o nada) |
+| Carrito | Cambiar cantidades, avisos de stock, descuento por cada combo completo, envío gratis desde 25 $ medido con lo que se paga |
+| Checkout | Dirección (o crear una), zonas que llegan a ese estado, cupón de descuento (se prueba con la API y muestra el motivo si no aplica), método de pago con el monto estimado en su moneda, términos |
 | Pedido | Instrucciones de pago, plazo de 2 horas con cuenta regresiva, reportar pago con comprobante (JPG, PNG, WebP o PDF de hasta 5 MB), cancelar, guía de envío e historial |
 | Devoluciones | Hasta 3 días después de la entrega, por unidades y con motivo; alimento e higiene quedan fuera; estado y reembolso en el pedido |
 | Cuenta | Entrar, crear cuenta, direcciones (máx. 10) y cerrar sesión |
@@ -68,27 +69,33 @@ Sin conexión, la sesión guardada no se borra y cada pantalla ofrece reintentar
 
 ```bash
 flutter analyze
-flutter test                     # 231 pruebas, sin red
+flutter test                     # 293 pruebas, sin red
 ```
 
 - `test/core`: dinero, formatos, validaciones, cliente HTTP (renovación, 401, errores) y lectura del JSON.
 - `test/flows`: la app completa en un teléfono de 390×844 sobre una API falsa en memoria
   (`test/support/fake_backend.dart`): entrar, registro, catálogo, carrito, checkout,
-  pedidos, reporte de pago, comprobantes, devoluciones, reseñas, recomendados y direcciones, con sus
+  pedidos, reporte de pago, comprobantes, devoluciones, reseñas, recomendados, combos, cupones y direcciones, con sus
   validaciones y errores.
 
 Prueba de contrato contra la API real (la corre CI con datos de ejemplo):
 
 ```bash
-SEED_DEMO=true pnpm --filter api prisma:seed
+SEED_DEMO=true SEED_ADMIN_EMAIL=contrato-admin@petbf.test \
+  SEED_ADMIN_PASSWORD=clave-de-admin-contrato pnpm --filter api prisma:seed
+# La API crea cupones y combos solo desde el panel (con 2FA): los de la prueba se insertan con SQL.
+PGPASSWORD=petbf psql -h localhost -U petbf -d petbf_contract -v ON_ERROR_STOP=1 -f contract/promotions.sql
 AUTH_THROTTLE_LIMIT=1000 pnpm --filter api start:prod
 CONTRACT_API_URL=http://localhost:3001/v1 flutter test contract
 ```
 
 Crea una cuenta nueva, compra, reporta el pago, sube y descarga el comprobante,
 intenta devolver un pedido sin entregar, cancela un segundo pedido y lee las
-reseñas y los recomendados (sin haber recibido el producto, reseñar da 403). También
-comprueba que el monto en Bs que calcula la app es el mismo que fija la API.
+reseñas y los recomendados (sin haber recibido el producto, reseñar da 403).
+También arma un combo, prueba cupones (inexistente, vencido, compra mínima,
+porcentaje, con tope y de monto fijo), compra con cupón, comprueba que no se
+repite y que cancelar el pedido libera su uso. Además comprueba que el monto en
+Bs que calcula la app es el mismo que fija la API.
 
 CI (`.github/workflows/ci.yml`, job `mobile`) corre formato, análisis, pruebas,
 contrato y compila un APK de debug que queda como artefacto durante 7 días.

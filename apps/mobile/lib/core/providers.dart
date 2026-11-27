@@ -394,12 +394,20 @@ class CartController extends AsyncNotifier<Cart> {
 
   Future<void> clear() => _apply(_api.clearCart);
 
+  Future<void> addCombo(String slug, int quantity) =>
+      _apply(() => _api.addCombo(slug, quantity));
+
   /// Tras un pedido la API vacía el carrito.
   void markEmpty() => state = const AsyncData(Cart.empty);
 }
 
 final cartProvider = AsyncNotifierProvider<CartController, Cart>(
   CartController.new,
+);
+
+/// Combos a la venta (públicos).
+final combosProvider = FutureProvider.autoDispose<List<Combo>>(
+  (ref) => ref.watch(apiProvider).combos(),
 );
 
 final cartCountProvider = Provider<int>(

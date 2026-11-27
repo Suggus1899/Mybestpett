@@ -119,4 +119,53 @@ void main() {
     expect(currencyFromApi('USDT'), Currency.usdt);
     expect(() => currencyFromApi('BTC'), throwsFormatException);
   });
+
+  group('discountedShare (reembolso con descuentos)', () {
+    test('reparte el descuento en proporción, redondeando hacia abajo', () {
+      // Como la API: se pagó 3200 de 4000, un producto de 1000 devuelve 800.
+      expect(
+        discountedShare(1000, subtotalUsdCents: 4000, discountUsdCents: 800),
+        800,
+      );
+      // 890 × 1602 / 1780 = 801 exacto
+      expect(
+        discountedShare(890, subtotalUsdCents: 1780, discountUsdCents: 178),
+        801,
+      );
+      // 333 × 2 / 3 = 222; 100 × 2 / 3 = 66,67 → 66
+      expect(
+        discountedShare(100, subtotalUsdCents: 3, discountUsdCents: 1),
+        66,
+      );
+    });
+
+    test('sin descuento, o sin subtotal, devuelve el precio de lista', () {
+      expect(
+        discountedShare(1000, subtotalUsdCents: 4000, discountUsdCents: 0),
+        1000,
+      );
+      expect(
+        discountedShare(1000, subtotalUsdCents: 0, discountUsdCents: 0),
+        1000,
+      );
+    });
+
+    test('con todo descontado no devuelve nada', () {
+      expect(
+        discountedShare(1000, subtotalUsdCents: 1780, discountUsdCents: 1780),
+        0,
+      );
+    });
+
+    test('no se desborda con montos grandes', () {
+      expect(
+        discountedShare(
+          9000000000000,
+          subtotalUsdCents: 9000000000000,
+          discountUsdCents: 1,
+        ),
+        8999999999999,
+      );
+    });
+  });
 }
