@@ -147,6 +147,39 @@ class FakeBackend {
     'isActive': active,
   };
 
+  /// Movimientos de puntos: id, email, delta, reason, note, createdAt y el
+  /// pedido (orderId, orderNumber).
+  final pointsEntries = <Json>[];
+  int _pointsCounter = 0;
+
+  int pointsBalance(String email) => pointsEntries
+      .where((e) => e['email'] == email)
+      .fold(0, (n, e) => n + (e['delta']! as int));
+
+  /// Registra un movimiento de puntos (por defecto, un ajuste de la tienda).
+  Json addPoints(
+    String email,
+    int delta, {
+    String reason = 'ADJUSTED',
+    String? note,
+    Json? order,
+    DateTime? at,
+  }) {
+    _pointsCounter++;
+    final entry = <String, Object?>{
+      'id': 'pt-$_pointsCounter',
+      'email': email,
+      'delta': delta,
+      'reason': reason,
+      'note': note,
+      'createdAt': (at ?? now).toIso8601String(),
+      'orderId': order?['id'],
+      'orderNumber': order?['number'],
+    };
+    pointsEntries.add(entry);
+    return entry;
+  }
+
   /// Reseñas: id, productId, email, rating, title, body, status,
   /// hiddenReason, createdAt.
   final reviews = <Json>[];
@@ -553,6 +586,38 @@ class FakeBackend {
       return _json(200, _presentCombo(_comboBySlug(segments[1])));
     }
     if (m == 'GET' && path == '/shipping-zones') return _json(200, zones);
+    if (m == 'GET' && path == '/points') {
+      final email = _auth(r);
+      final q = r.url.queryParameters;
+      final mine = pointsEntries
+          .where((e) => e['email'] == email)
+          .toList()
+          .reversed
+          .toList(); // del más reciente al más antiguo
+      final page = int.parse(q['page'] ?? '1');
+      final size = int.parse(q['pageSize'] ?? '20');
+      final balance = pointsBalance(email);
+      return _json(200, {
+        'balance': balance,
+        'valueUsdCents': balance,
+        'items': [
+          for (final e in mine.skip((page - 1) * size).take(size))
+            {
+              'id': e['id'],
+              'delta': e['delta'],
+              'reason': e['reason'],
+              'note': e['note'],
+              'createdAt': e['createdAt'],
+              'order': e['orderId'] == null
+                  ? null
+                  : {'id': e['orderId'], 'number': e['orderNumber']},
+            },
+        ],
+        'total': mine.length,
+        'page': page,
+        'pageSize': size,
+      });
+    }
     if (m == 'GET' && path == '/payment-methods') return _json(200, methods);
 
     // Carrito
@@ -675,6 +740,16 @@ class FakeBackend {
           throw const _HttpError(409, 'Este pedido ya no se puede cancelar');
         }
         _transition(order, 'CANCELLED', 'Cancelado por el cliente');
+        final redeemed = order['pointsRedeemed']! as int;
+        if (redeemed > 0) {
+          addPoints(
+            email,
+            redeemed,
+            reason: 'RESTORED',
+            note: 'Pedido cancelado',
+            order: order,
+          );
+        }
         return _json(201, _public(order));
       }
       if (m == 'POST' && segments.length == 3 && segments[2] == 'payments') {
@@ -1285,7 +1360,31 @@ class FakeBackend {
 
     final subtotal = cart['subtotalUsdCents']! as int;
     // El envío gratis se mide con lo que se paga por los productos.
-    final itemsTotal = cart['itemsTotalUsdCents']! as int;
+    final quoted = cart['itemsTotalUsdCents']! as int;
+    // Puntos: después de combos y cupón, solo sobre los productos.
+    final points = body['points'] ?? 0;
+    if (points is! int) {
+      throw const _HttpError(400, ['points: Los puntos son enteros']);
+    }
+    if (points < 0 || points > 10000000) {
+      throw const _HttpError(400, ['points: Cantidad de puntos inválida']);
+    }
+    if (points % 100 != 0) {
+      throw const _HttpError(400, [
+        'points: Los puntos se canjean de 100 en 100',
+      ]);
+    }
+    if (points > 0) {
+      final balance = pointsBalance(email);
+      if (points > balance) throw _HttpError(400, 'Tienes $balance puntos');
+      if (points > quoted) {
+        throw _HttpError(
+          400,
+          'En este pedido puedes usar como máximo ${quoted ~/ 100 * 100} puntos',
+        );
+      }
+    }
+    final itemsTotal = quoted - points;
     final shipping = itemsTotal >= (zone['freeOverUsdCents']! as int)
         ? 0
         : zone['priceUsdCents']! as int;
@@ -1320,6 +1419,9 @@ class FakeBackend {
       'comboDiscountUsdCents': cart['comboDiscountUsdCents'],
       'couponDiscountUsdCents': couponInfo?['discountUsdCents'] ?? 0,
       'couponCode': couponInfo?['code'],
+      'pointsRedeemed': points,
+      'pointsDiscountUsdCents': points,
+      'pointsEarned': 0,
       'shippingUsdCents': shipping,
       'totalUsdCents': total,
       'totalCharged': charged,
@@ -1369,6 +1471,9 @@ class FakeBackend {
     };
     orders.add(order);
     carts[email]!.clear();
+    if (points > 0) {
+      addPoints(email, -points, reason: 'REDEEMED', order: order);
+    }
     return _json(201, _public(order));
   }
 
@@ -1401,6 +1506,25 @@ class FakeBackend {
 
   void _transition(Json order, String status, String? note) {
     order['status'] = status;
+    // Al entregar se ganan los puntos, una sola vez: uno por dólar completo
+    // pagado en productos (sin envío y sin lo pagado con puntos).
+    if (status == 'DELIVERED' && order['pointsEarned'] == 0) {
+      final paid =
+          (order['subtotalUsdCents']! as int) -
+          (order['comboDiscountUsdCents']! as int) -
+          (order['couponDiscountUsdCents']! as int) -
+          (order['pointsDiscountUsdCents']! as int);
+      final earned = paid <= 0 ? 0 : paid ~/ 100;
+      if (earned > 0) {
+        order['pointsEarned'] = earned;
+        addPoints(
+          order['_owner']! as String,
+          earned,
+          reason: 'EARNED',
+          order: order,
+        );
+      }
+    }
     (order['history']! as List).add({
       'toStatus': status,
       'note': note,

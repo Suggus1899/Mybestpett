@@ -278,4 +278,43 @@ void main() {
     expect(normalizeCouponCode('ab'), isNull);
     expect(normalizeCouponCode(''), isNull);
   });
+
+  test('puntos: vacío es 0; enteros, de 100 en 100 y hasta el máximo', () {
+    expect(validatePoints(null, max: 500), isNull);
+    expect(validatePoints('  ', max: 500), isNull);
+    expect(validatePoints('0', max: 500), isNull);
+    expect(validatePoints('100', max: 500), isNull);
+    expect(validatePoints(' 500 ', max: 500), isNull);
+    for (final bad in ['-100', '1.5', '10,5', 'abc', '1e3', '+100', '١٠٠']) {
+      expect(
+        validatePoints(bad, max: 500),
+        'Escribe solo números enteros',
+        reason: bad,
+      );
+    }
+    for (final bad in ['50', '150', '101']) {
+      expect(
+        validatePoints(bad, max: 500),
+        'Los puntos se canjean de 100 en 100',
+        reason: bad,
+      );
+    }
+    expect(
+      validatePoints('600', max: 500),
+      'En este pedido puedes usar hasta 500 puntos',
+    );
+    expect(
+      validatePoints('100', max: 0),
+      'En este pedido puedes usar hasta 0 puntos',
+    );
+  });
+
+  test('puntos: pointsFrom devuelve 0 si no es válido', () {
+    expect(pointsFrom('300', max: 500), 300);
+    expect(pointsFrom('', max: 500), 0);
+    expect(pointsFrom(null, max: 500), 0);
+    expect(pointsFrom('150', max: 500), 0);
+    expect(pointsFrom('900', max: 500), 0);
+    expect(pointsFrom('x', max: 500), 0);
+  });
 }

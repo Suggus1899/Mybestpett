@@ -129,6 +129,9 @@ jobs:
       - run: flutter test contract
         env:
           CONTRACT_API_URL: http://localhost:3001/v1
+          # Para abonar puntos a la cuenta de la prueba (psql no admite ?schema=).
+          CONTRACT_DATABASE_URL: postgresql://petbf:petbf@localhost:5432/petbf_contract
+          PGPASSWORD: petbf
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

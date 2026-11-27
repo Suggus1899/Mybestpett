@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import '../models/catalog.dart';
 import '../models/json.dart';
+import '../models/points.dart';
 import '../models/reviews.dart';
 import '../models/shop.dart';
 import 'api_client.dart';
@@ -296,6 +297,20 @@ class PetbfApi {
   Future<void> deleteAddress(String id) =>
       client.delete('/addresses/${Uri.encodeComponent(id)}');
 
+  // ---------- Puntos ----------
+
+  /// Saldo y movimientos de la persona con sesión.
+  Future<PointsSummary> points({int page = 1, int pageSize = 20}) async =>
+      PointsSummary.fromJson(
+        asJson(
+          await client.get(
+            '/points',
+            auth: true,
+            query: {'page': '$page', 'pageSize': '$pageSize'},
+          ),
+        ),
+      );
+
   // ---------- Checkout y pedidos ----------
 
   Future<List<ShippingZone>> shippingZones() async =>
@@ -309,6 +324,7 @@ class PetbfApi {
     required String shippingZoneId,
     required String paymentMethodId,
     String? couponCode,
+    int points = 0,
   }) async => Order.fromJson(
     asJson(
       await client.post(
@@ -319,6 +335,7 @@ class PetbfApi {
           'paymentMethodId': paymentMethodId,
           'acceptTerms': true,
           'couponCode': ?couponCode,
+          if (points > 0) 'points': points,
         },
       ),
     ),
