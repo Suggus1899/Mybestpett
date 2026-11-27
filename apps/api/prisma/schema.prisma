@@ -61,6 +61,8 @@ model User {
   reviews          ProductReview[]      @relation("ReviewAuthor")
   reviewsModerated ProductReview[]      @relation("ReviewModerator")
   couponsCreated   Coupon[]
+  pointsEntries    PointsEntry[]        @relation("PointsOwner")
+  pointsAdjusted   PointsEntry[]        @relation("PointsAdjuster")
 
   @@map("users")
 }
@@ -443,6 +445,10 @@ model Order {
   couponDiscountUsdCents Int         @default(0)
   couponId               String?     @db.Uuid
   couponCode             String?
+  // Puntos: 100 puntos = 1 $. Se canjean al comprar y se ganan al entregar.
+  pointsRedeemed         Int         @default(0)
+  pointsDiscountUsdCents Int         @default(0)
+  pointsEarned           Int         @default(0)
   shippingUsdCents       Int
   totalUsdCents          Int // subtotal − descuentos + envío
   totalCharged           Decimal     @db.Decimal(20, 8) // monto exacto a pagar en chargedCurrency
@@ -473,6 +479,7 @@ model Order {
   movements     InventoryMovement[]
   returns       ReturnRequest[]
   coupon        Coupon?              @relation(fields: [couponId], references: [id], onDelete: Restrict)
+  pointsEntries PointsEntry[]
 
   @@index([userId, createdAt])
   @@index([couponId])
@@ -587,6 +594,8 @@ model ReturnRequest {
   items      ReturnItem[]
 
   // Además, un índice único parcial impide dos devoluciones abiertas del mismo pedido.
+  pointsEntries PointsEntry[]
+
   @@index([status, createdAt])
   @@index([orderId])
   @@map("return_requests")
@@ -737,4 +746,34 @@ model ComboItem {
 
   @@unique([comboId, variantId])
   @@map("combo_items")
+}
+
+enum PointsReason {
+  EARNED // pedido entregado
+  REDEEMED // canjeados al comprar
+  RESTORED // devueltos al cancelar o reembolsar
+  REVERSED // se quitan los ganados por lo que se reembolsó
+  ADJUSTED // ajuste manual del administrador
+}
+
+// Movimientos de puntos. El saldo es la suma de `delta` y nunca baja de 0.
+model PointsEntry {
+  id          String       @id @default(uuid()) @db.Uuid
+  userId      String       @db.Uuid
+  delta       Int
+  reason      PointsReason
+  orderId     String?      @db.Uuid
+  returnId    String?      @db.Uuid
+  note        String?
+  createdById String?      @db.Uuid
+  createdAt   DateTime     @default(now())
+
+  user      User           @relation("PointsOwner", fields: [userId], references: [id], onDelete: Cascade)
+  order     Order?         @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  return    ReturnRequest? @relation(fields: [returnId], references: [id], onDelete: SetNull)
+  createdBy User?          @relation("PointsAdjuster", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt])
+  @@index([orderId])
+  @@map("points_entries")
 }

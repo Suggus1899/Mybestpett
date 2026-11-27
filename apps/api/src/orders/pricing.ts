@@ -140,9 +140,13 @@ export function discountedShare(
     subtotalUsdCents: number;
     comboDiscountUsdCents: number;
     couponDiscountUsdCents: number;
+    pointsDiscountUsdCents: number;
   },
 ) {
-  const discount = order.comboDiscountUsdCents + order.couponDiscountUsdCents;
+  const discount =
+    order.comboDiscountUsdCents +
+    order.couponDiscountUsdCents +
+    order.pointsDiscountUsdCents;
   if (discount === 0 || order.subtotalUsdCents === 0) return listUsdCents;
   return Math.floor(
     (listUsdCents * (order.subtotalUsdCents - discount)) /

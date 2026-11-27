@@ -243,10 +243,11 @@ docker build -f apps/api/Dockerfile -t petbf-api .   # la etapa `migrate` aplica
 ### Envíos y devoluciones
 
 - Envío **gratis desde 25 $**; por debajo se cobra una tarifa por zona.
-- Los combos y el cupón se descuentan de los productos, nunca del envío. El envío gratis se mide con lo que se paga por los productos ya descontados.
+- Los combos, el cupón y los puntos se descuentan de los productos, nunca del envío. El envío gratis se mide con lo que se paga por los productos ya descontados.
+- Puntos: se gana 1 por cada dólar pagado en productos (sin envío ni lo pagado con puntos) cuando el pedido se entrega; se canjean de 100 en 100 (100 puntos = 1 $). Solo el administrador hace ajustes manuales, con motivo.
 - Devoluciones en un máximo de **3 días** desde la entrega. El cliente elige productos y unidades y explica el motivo; solo una devolución abierta por pedido.
 - El operador aprueba o rechaza (nadie gestiona su propio pedido). Solo el administrador registra el reembolso: por el mismo método, en la misma moneda y con las tasas congeladas del pedido, e indica si el producto vuelve al inventario.
-- El envío no se reembolsa. Si el pedido tuvo combos o cupón, se reembolsa lo pagado por cada producto (el descuento se reparte en proporción). Si se devuelve todo el pedido, queda como reembolsado.
+- El envío no se reembolsa. Si el pedido tuvo combos, cupón o puntos, se reembolsa lo pagado por cada producto (el descuento se reparte en proporción); los puntos canjeados vuelven y los ganados se descuentan en la misma proporción. Si se devuelve todo el pedido, queda como reembolsado.
 - El alimento abierto y los productos de higiene abiertos no se devuelven.
 
 ### Animales vivos
@@ -294,6 +295,7 @@ Una persona puede tener varios roles a la vez.
 | **Recomendaciones** | "También te puede gustar": productos comprados juntos y los más vendidos de la categoría | ✅ |
 | **Combos** | Varios productos a un precio menor; el carrito descuenta cada combo completo | ✅ |
 | **Cupones** | Porcentaje (con tope) o monto fijo, vigencia, compra mínima y límites de uso total y por cliente; uno por pedido | ✅ |
+| **Puntos** | 1 punto por dólar pagado en productos al entregar; 100 puntos = 1 $ al comprar; vuelven al cancelar y se ajustan al reembolsar | ✅ |
 | **Reservas y adopciones** | Reserva con señal y solicitud de adopción con cuestionario | ⏳ |
 | **App móvil** | Flutter sobre la misma API: tienda, animales, carrito, checkout, pago y pedidos | 🚧 |
 

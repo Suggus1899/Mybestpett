@@ -126,6 +126,7 @@ export async function checkoutAction(_prev: ActionState, formData: FormData): Pr
     paymentMethodId: text(formData, 'paymentMethodId'),
     acceptTerms: formData.get('acceptTerms') === 'on',
     couponCode: text(formData, 'couponCode') || undefined,
+    points: Number(text(formData, 'points') || '0'),
   }, '/checkout');
   if (!result.ok) return { error: result.error };
   revalidatePath('/', 'layout');

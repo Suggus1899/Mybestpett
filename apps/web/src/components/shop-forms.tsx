@@ -168,6 +168,7 @@ export function CheckoutForm({
   methods,
   itemsTotalUsdCents,
   couponCode,
+  pointsBalance,
   usdVes,
   eurVes,
 }: {
@@ -176,6 +177,7 @@ export function CheckoutForm({
   methods: PaymentMethod[];
   itemsTotalUsdCents: number; // productos con combos y cupón descontados
   couponCode?: string;
+  pointsBalance: number;
   usdVes: string | null;
   eurVes: string | null;
 }) {
@@ -191,8 +193,14 @@ export function CheckoutForm({
   const [methodId, setMethodId] = useState(methods[0]?.id);
   const method = methods.find((m) => m.id === methodId);
 
-  const shipping = zone ? (itemsTotalUsdCents >= zone.freeOverUsdCents ? 0 : zone.priceUsdCents) : 0;
-  const total = itemsTotalUsdCents + shipping;
+  // 100 puntos = 1 $, de 100 en 100 y sin pasar del total de los productos.
+  const maxPoints = Math.floor(Math.min(pointsBalance, itemsTotalUsdCents) / 100) * 100;
+  const [pointsText, setPointsText] = useState('0');
+  const points = Number(pointsText);
+  const pointsValid = Number.isInteger(points) && points >= 0 && points <= maxPoints && points % 100 === 0;
+  const paidItems = itemsTotalUsdCents - (pointsValid ? points : 0);
+  const shipping = zone ? (paidItems >= zone.freeOverUsdCents ? 0 : zone.priceUsdCents) : 0;
+  const total = paidItems + shipping;
   const charge = method ? estimateCharge(total, method.currency, usdVes, eurVes) : null;
 
   return (
@@ -246,7 +254,7 @@ export function CheckoutForm({
                 </span>
               </span>
               <span className="font-bold">
-                {itemsTotalUsdCents >= z.freeOverUsdCents ? 'Gratis' : formatUsd(z.priceUsdCents)}
+                {paidItems >= z.freeOverUsdCents ? 'Gratis' : formatUsd(z.priceUsdCents)}
               </span>
             </label>
           ))
@@ -270,9 +278,39 @@ export function CheckoutForm({
         ))}
       </fieldset>
 
+      {maxPoints > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <label htmlFor="points" className="text-xl font-display">
+            Usar mis puntos
+          </label>
+          <p id="points-hint" className="text-sm text-slate">
+            Tienes {pointsBalance} puntos. En este pedido puedes usar hasta {maxPoints} (100 puntos = 1 $).
+          </p>
+          <input
+            id="points"
+            name="points"
+            type="number"
+            inputMode="numeric"
+            min={0}
+            max={maxPoints}
+            step={100}
+            value={pointsText}
+            onChange={(e) => setPointsText(e.target.value)}
+            aria-describedby="points-hint"
+            className={`${inputClass} w-40`}
+          />
+        </div>
+      )}
+
       <dl className="grid grid-cols-[1fr_auto] gap-y-1 rounded-[var(--radius-card)] border border-line bg-white p-5">
         <dt>Productos</dt>
         <dd className="text-right">{formatUsd(itemsTotalUsdCents)}</dd>
+        {pointsValid && points > 0 && (
+          <>
+            <dt>Puntos ({points})</dt>
+            <dd className="text-right">−{formatUsd(points)}</dd>
+          </>
+        )}
         <dt>Envío</dt>
         <dd className="text-right">{shipping === 0 ? 'Gratis' : formatUsd(shipping)}</dd>
         <dt className="font-extrabold">Total</dt>
@@ -286,9 +324,9 @@ export function CheckoutForm({
           </>
         )}
       </dl>
-      {itemsTotalUsdCents < 2500 && (
+      {paidItems < 2500 && (
         <p className="text-sm text-slate">
-          Te faltan {formatUsd(2500 - itemsTotalUsdCents)} para el envío gratis.
+          Te faltan {formatUsd(2500 - paidItems)} para el envío gratis.
         </p>
       )}
 

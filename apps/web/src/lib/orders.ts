@@ -78,3 +78,8 @@ export function estimateCharge(
   if (!eurVes) return null;
   return ((usd * Number(usdVes)) / Number(eurVes)).toFixed(2);
 }
+
+// Igual que en la API: 123 → "PB-000123".
+export function orderCode(number: number) {
+  return `PB-${String(number).padStart(6, '0')}`;
+}

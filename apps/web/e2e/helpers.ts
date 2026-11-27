@@ -183,3 +183,10 @@ export async function deliveredOrder(page: Page) {
   await open(page, url);
   return { url, code, product };
 }
+
+// El administrador le suma puntos a una cuenta (por API, como un ajuste).
+export async function givePoints(email: string, delta: number) {
+  const { accessToken } = await post('/auth/login', { email, password: PASSWORD });
+  const me = await fetch(`${API}/auth/me`, { headers: { Authorization: `Bearer ${accessToken}` } }).then((r) => r.json());
+  await post(`/manage/users/${me.id}/points`, { delta, note: 'Puntos de prueba' }, await admin());
+}
