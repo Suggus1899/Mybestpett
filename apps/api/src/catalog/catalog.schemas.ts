@@ -91,6 +91,8 @@ const productFields = z.object({
   species: z.array(z.enum(Species)).max(7),
   // false para alimento e higiene: no se aceptan devoluciones una vez abiertos.
   isReturnable: z.boolean(),
+  // Se puede pedir con entrega recurrente (alimento, arena…).
+  subscribable: z.boolean(),
   isActive: z.boolean(),
 });
 
@@ -99,6 +101,7 @@ export const createProductSchema = productFields.extend({
   brandId: z.uuid().nullable().optional(),
   species: productFields.shape.species.default([]),
   isReturnable: z.boolean().default(true),
+  subscribable: z.boolean().default(false),
   isActive: z.boolean().default(true),
   variants: z.array(createVariantSchema).min(1).max(30),
   images: z.array(imageSchema).max(10).default([]),

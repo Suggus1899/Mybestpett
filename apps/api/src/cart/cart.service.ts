@@ -18,6 +18,7 @@ const itemInclude = {
           slug: true,
           isActive: true,
           isReturnable: true,
+          subscribable: true,
           images: {
             orderBy: { sortOrder: 'asc' },
             take: 1,

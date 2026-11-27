@@ -53,6 +53,31 @@ export class EmailService implements OnModuleInit, OnModuleDestroy {
     await db.emailOutbox.create({ data: { to, kind, ...email } });
   }
 
+  // Avisa que una suscripción se pausó sola tras varios intentos fallidos.
+  async subscriptionPaused(
+    db: Db,
+    userId: string,
+    productName: string,
+    reason: string,
+  ) {
+    const user = await db.user.findUniqueOrThrow({
+      where: { id: userId },
+      select: { email: true, firstName: true },
+    });
+    const web = this.config.get('WEB_URL', { infer: true }).replace(/\/$/, '');
+    await this.enqueue(
+      db,
+      user.email,
+      templates.subscriptionPaused(
+        user.firstName,
+        productName,
+        reason,
+        `${web}/cuenta/suscripciones`,
+      ),
+      'subscription.paused',
+    );
+  }
+
   // Avisa al cliente del cambio de estado de su pedido.
   async orderEvent(
     db: Db,
@@ -73,11 +98,18 @@ export class EmailService implements OnModuleInit, OnModuleDestroy {
                 (note ?? '').replace(/^Pago rechazado: /, ''),
                 order.paymentDueAt,
               )
-            : templates.orderCreated(
-                info,
-                order.paymentDueAt,
-                order.paymentMethod.instructions,
-              );
+            : order.subscription
+              ? templates.subscriptionOrder(
+                  info,
+                  order.subscription.variant.product.name,
+                  order.paymentDueAt,
+                  order.paymentMethod.instructions,
+                )
+              : templates.orderCreated(
+                  info,
+                  order.paymentDueAt,
+                  order.paymentMethod.instructions,
+                );
         break;
       case 'PAID':
         email = templates.paymentVerified(info);
@@ -221,6 +253,11 @@ export class EmailService implements OnModuleInit, OnModuleDestroy {
         carrier: true,
         trackingCode: true,
         deliveredAt: true,
+        subscription: {
+          select: {
+            variant: { select: { product: { select: { name: true } } } },
+          },
+        },
         user: { select: { email: true, firstName: true } },
         paymentMethod: { select: { name: true, instructions: true } },
       },

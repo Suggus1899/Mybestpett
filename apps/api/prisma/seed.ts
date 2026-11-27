@@ -128,6 +128,7 @@ async function seedDemo() {
       category: 'perros',
       species: ['DOG'] as const,
       isReturnable: false,
+      subscribable: true,
       variants: [
         {
           sku: 'NP-PA-3',
@@ -145,6 +146,7 @@ async function seedDemo() {
       category: 'gatos',
       species: ['CAT'] as const,
       isReturnable: false,
+      subscribable: true,
       variants: [
         { sku: 'AR-10', name: 'Bolsa 10 kg', priceUsdCents: 900, stock: 0 },
       ],

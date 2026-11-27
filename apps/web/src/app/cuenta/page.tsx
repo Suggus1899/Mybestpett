@@ -43,6 +43,9 @@ async function Account() {
         <Link href="/cuenta/puntos" className="font-bold text-petbf hover:underline">
           Mis puntos
         </Link>
+        <Link href="/cuenta/suscripciones" className="font-bold text-petbf hover:underline">
+          Mis suscripciones
+        </Link>
         {user.twoFactor.available && (
           <Link href="/cuenta/seguridad" className="font-bold text-petbf hover:underline">
             Verificación en dos pasos: {user.twoFactor.enabled ? 'activa' : 'sin activar'}
